@@ -487,14 +487,14 @@
     border: none;
     text-align: right;
     width: 100%;
-    min-width: 70px;
+    min-width: 60px;
+    box-sizing: border-box;
     color: var(--text);
     cursor: pointer;
-    padding: 4px 8px;
+    padding: 4px 6px;
     border-radius: 4px;
     border: 1px solid transparent;
     transition: all 0.15s;
-    box-sizing: border-box;
   }
   .amount-input:hover { border-color: var(--border); background: var(--surface2); }
   .amount-input:focus { outline: none; border-color: var(--accent); background: var(--surface2); color: var(--accent); }
@@ -830,7 +830,9 @@
     border: 1px solid var(--border);
     border-radius: 16px;
     width: 420px;
-    max-width: 90vw;
+    max-width: 92vw;
+    max-height: 90vh;
+    overflow-y: auto;
     padding: 28px;
     transform: translateY(12px) scale(0.97);
     transition: transform 0.2s;
@@ -952,7 +954,7 @@
     border: 2px solid var(--border);
     cursor: pointer;
   }
-  .modal-scroll { max-height: 200px; overflow-y: auto; margin-bottom: 16px; }
+  .modal-scroll { max-height: 65vh; overflow-y: auto; margin-bottom: 16px; }
 
   /* SORT COLUMN BUTTONS */
   .sort-col-btn {
@@ -993,11 +995,8 @@
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    grid-auto-rows: 1fr;
     gap: 5px;
   }
-  /* DOW labels row must NOT stretch — only data rows */
-  .cal-grid .cal-dow { align-self: end; }
   .cal-dow {
     font-family:var(--font-mono);
     font-size: 0.7143em; color: var(--muted);
@@ -1578,6 +1577,98 @@
     .top-bar-title { font-size: 0.85em; }
   }
 
+  /* ── ICON-RAIL MOBILE NAV ──────────────────────────────────
+     When mobilePanelMode = 'icons', on ≤768px the nav collapses
+     to a narrow 52px icon-only rail that's always visible.      */
+  @media (max-width: 768px) {
+    body.mobile-panel-icons .left-nav {
+      width: 52px !important;
+      min-width: 52px;
+      transform: none !important;
+      box-shadow: none !important;
+      overflow: hidden;
+    }
+    body.mobile-panel-icons .left-nav .nav-item {
+      padding: 12px 0;
+      justify-content: center;
+      gap: 0;
+    }
+    body.mobile-panel-icons .left-nav .nav-item > *:not(.nav-icon) { display: none; }
+    body.mobile-panel-icons .left-nav .nav-icon { width: 22px; height: 22px; opacity: 1; }
+    body.mobile-panel-icons .left-nav .nav-section-label { display: none; }
+    body.mobile-panel-icons .left-nav .nav-footer { padding: 8px 0; }
+    body.mobile-panel-icons .left-nav .nav-footer .save-btn { justify-content: center; padding: 8px 0; width: 100%; }
+    body.mobile-panel-icons .left-nav .nav-footer .save-btn > *:not(svg) { display: none; }
+    body.mobile-panel-icons .left-nav .nav-brand { padding: 10px 0; display: flex; align-items: center; justify-content: center; }
+    body.mobile-panel-icons .left-nav .nav-brand img { max-width: 32px; }
+    /* Main content shifts right by icon rail width */
+    body.mobile-panel-icons .main-content { margin-left: 52px !important; }
+    body.mobile-panel-icons .top-bar { left: 52px !important; }
+    /* Hide hamburger when icon rail is showing */
+    body.mobile-panel-icons .hamburger-btn { display: none !important; }
+  }
+
+  /* ── LOCK EDITING ─────────────────────────────────────────── */
+  /* When locked: all inputs, buttons (except nav/settings) become non-interactive */
+  body.edit-locked .amount-input,
+  body.edit-locked input[type="number"],
+  body.edit-locked input[type="text"],
+  body.edit-locked input[type="date"] {
+    pointer-events: none;
+    opacity: 0.6;
+    cursor: default;
+  }
+  body.edit-locked .item-actions { pointer-events: none; opacity: 0.3; }
+  body.edit-locked .btn-add,
+  body.edit-locked [onclick*="addIncome"],
+  body.edit-locked [onclick*="addExpense"],
+  body.edit-locked [onclick*="addDebt"],
+  body.edit-locked [onclick*="addInvestment"],
+  body.edit-locked [onclick*="openCategoryModal"],
+  body.edit-locked .reset-btn { pointer-events: none; opacity: 0.3; }
+  /* Lock indicator badge in top bar */
+  #lock-indicator {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.7em;
+    color: var(--accent);
+    background: rgba(200,245,62,.12);
+    border: 1px solid rgba(200,245,62,.3);
+    border-radius: 6px;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+
+  /* ── TOGGLE SWITCH ────────────────────────────────────────── */
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 42px; height: 24px;
+    flex-shrink: 0;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    left: 3px; top: 3px;
+    width: 16px; height: 16px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: transform .2s, background .2s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: rgba(200,245,62,.2); border-color: var(--accent); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); background: var(--accent); }
+
 </style>
 </head>
 <body class="density-compact">
@@ -1657,6 +1748,10 @@
       <button id="undo-btn" class="undo-btn" onclick="performUndo()" title="Undo last change (⌘Z)" style="opacity: 0.3; cursor: not-allowed;" disabled="">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7H11a4 4 0 0 1 0 8H7"></path><path d="M3 7L6 4M3 7L6 10"></path></svg>
       </button>
+      <div id="lock-indicator" title="View only — editing locked">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>
+        View only
+      </div>
     </div>
 
     <div class="top-bar-right">
@@ -3604,11 +3699,12 @@ function renderIncome() {
     const monthly = monthlyIncome(item);
     const freq = FREQ_LABELS[item.freq] || 'Monthly';
     return `
-    <div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">
-      <div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">
-        <span>${item.name}</span>
-        <span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">${freq} &middot; ${fmt(monthly)}/mo</span>
+    <div class="line-item" style="grid-template-columns:1fr auto auto auto">
+      <div class="name">
+        ${item.name}
+        <span class="note">${freq}</span>
       </div>
+      <span class="note" style="white-space:nowrap;font-family:var(--font-mono);font-size:0.7857em;color:var(--muted)">${fmt(monthly)}/mo</span>
       <div class="item-actions">
         <button class="icon-btn" onclick="editIncome('${item.id}')" title="Edit">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
@@ -3747,13 +3843,13 @@ function renderExpenses() {
   }
 
   // Column header row
-  const COLS = "minmax(120px,1fr) minmax(80px,100px) 52px 70px minmax(80px,auto) 56px";
+  const COLS = "minmax(100px,1fr) 28px 36px 54px minmax(72px,auto) 44px";
   const header = `<div style="display:grid;grid-template-columns:${COLS};align-items:center;padding:6px 20px;border-bottom:1px solid var(--border);gap:8px">
     <button class="sort-col-btn" onclick="sortExpenses('name')">Name ${sortIcon('name')}</button>
-    <button class="sort-col-btn" onclick="sortExpenses('category')">Category ${sortIcon('category')}</button>
+    <button class="sort-col-btn" onclick="sortExpenses('category')" style="justify-content:center" title="Category">${sortIcon('category')}</button>
     <button class="sort-col-btn" onclick="cycleSourceFilter()" style="display:flex;align-items:center;gap:4px;justify-content:center">${sourceFilterLabel()}</button>
     <button class="sort-col-btn" onclick="sortExpenses('due')" style="text-align:center;justify-content:center;display:flex;align-items:center;gap:4px">Date ${sortIcon('due')}</button>
-    <button class="sort-col-btn" onclick="sortExpenses('amount')" style="text-align:right">Amount ${sortIcon('amount')}</button>
+    <button class="sort-col-btn" onclick="sortExpenses('amount')" style="text-align:right">Amt ${sortIcon('amount')}</button>
     <div></div>
   </div>`;
 
@@ -3769,13 +3865,11 @@ function renderExpenses() {
     return `
     <div class="line-item" style="grid-template-columns:${COLS};gap:8px;align-items:start">
       <div class="name" style="white-space:normal;word-break:break-word;align-items:flex-start;padding-top:2px">
-        <div class="section-dot" style="background:${categoryColors[category]||'#888'};width:6px;height:6px;flex-shrink:0;margin-top:3px"></div>
         <span>${item.name}</span>
         ${manual ? '<span class="manual-badge">✋ manual</span>' : ''}
-        </div>
-      <div style="display:flex;align-items:center;gap:5px;overflow:hidden;padding-top:2px">
-        <div class="section-dot" style="background:${categoryColors[category]||'#888'};width:5px;height:5px;flex-shrink:0;margin-top:1px"></div>
-        <span style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${category||''}</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;padding-top:4px" title="${category||''}">
+        <div class="section-dot" style="background:${categoryColors[category]||'#888'};width:9px;height:9px;flex-shrink:0;border-radius:50%"></div>
       </div>
       <div style="display:flex;align-items:center;justify-content:center;padding-top:2px">
         ${logoSrc ? `<img class="source-logo" src="${logoSrc}" title="${source}">` : '<span style="width:18px;display:inline-block"></span>'}
@@ -5286,17 +5380,19 @@ function updateNavBadges() {
 
 // ─── SETTINGS ────────────────────────────────────────────────────
 let appSettings = {
-  panelMode:    'fixed',
-  theme:        'dark',
-  density:      'normal',
-  calDefault:   'month',
-  weekStart:    0,
-  dueSoon:      5,
-  fontSize:      'medium',
-  fontStyle:     'sans',
-  rogersMode:    'pct',   // 'pct' | 'keep'
-  rogersPct:     50,      // % of leftover to allocate to Rogers
-  rogersKeep:    500,     // $ to keep aside (leftover - keep = Rogers budget)
+  panelMode:       'fixed',     // browser: 'fixed' | 'slideover'
+  mobilePanelMode: 'icons',     // mobile:  'icons' | 'slideover'
+  theme:           'dark',
+  density:         'normal',
+  calDefault:      'month',
+  weekStart:       0,
+  dueSoon:         5,
+  fontSize:        'medium',
+  fontStyle:       'sans',
+  lockEditing:     false,       // view-only lock
+  rogersMode:      'pct',
+  rogersPct:       50,
+  rogersKeep:      500,
 };
 
 function openSettings() {
@@ -5312,27 +5408,31 @@ function settingsOverlayClick(e) {
 function syncSettingsUI() {
   const sel = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
   const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
-  sel('s-panel-mode',  appSettings.panelMode);
-  sel('s-theme',       appSettings.theme);
-  sel('s-density',     appSettings.density);
-  sel('s-cal-default', appSettings.calDefault);
-  sel('s-week-start',  appSettings.weekStart);
-  sel('s-due-soon',    appSettings.dueSoon);
-  sel('s-font-size',   appSettings.fontSize  || 'medium');
-  sel('s-font-style',  appSettings.fontStyle || 'sans');
+  sel('s-panel-mode',        appSettings.panelMode);
+  sel('s-mobile-panel-mode', appSettings.mobilePanelMode || 'icons');
+  sel('s-theme',             appSettings.theme);
+  sel('s-density',           appSettings.density);
+  sel('s-cal-default',       appSettings.calDefault);
+  sel('s-week-start',        appSettings.weekStart);
+  sel('s-due-soon',          appSettings.dueSoon);
+  sel('s-font-size',         appSettings.fontSize  || 'medium');
+  sel('s-font-style',        appSettings.fontStyle || 'sans');
+  chk('s-lock-editing',      appSettings.lockEditing || false);
 }
 function applySettings() {
   // Read UI → store (guard: elements may not exist at init time)
   const val = id => { const el = document.getElementById(id); return el ? el.value : null; };
   const chk = id => { const el = document.getElementById(id); return el ? el.checked : true; };
-  if (val('s-panel-mode')  !== null) appSettings.panelMode  = val('s-panel-mode');
-  if (val('s-theme')       !== null) appSettings.theme      = val('s-theme');
-  if (val('s-density')     !== null) appSettings.density    = val('s-density');
-  if (val('s-cal-default') !== null) appSettings.calDefault = val('s-cal-default');
-  if (val('s-week-start')  !== null) appSettings.weekStart  = +val('s-week-start');
-  if (val('s-due-soon')    !== null) appSettings.dueSoon    = +val('s-due-soon');
-  if (val('s-font-size')   !== null) appSettings.fontSize   = val('s-font-size');
-  if (val('s-font-style')  !== null) appSettings.fontStyle  = val('s-font-style');
+  if (val('s-panel-mode')        !== null) appSettings.panelMode        = val('s-panel-mode');
+  if (val('s-mobile-panel-mode') !== null) appSettings.mobilePanelMode = val('s-mobile-panel-mode');
+  if (val('s-theme')             !== null) appSettings.theme            = val('s-theme');
+  if (val('s-density')           !== null) appSettings.density          = val('s-density');
+  if (val('s-cal-default')       !== null) appSettings.calDefault       = val('s-cal-default');
+  if (val('s-week-start')        !== null) appSettings.weekStart        = +val('s-week-start');
+  if (val('s-due-soon')          !== null) appSettings.dueSoon          = +val('s-due-soon');
+  if (val('s-font-size')         !== null) appSettings.fontSize         = val('s-font-size');
+  if (val('s-font-style')        !== null) appSettings.fontStyle        = val('s-font-style');
+  appSettings.lockEditing = chk('s-lock-editing');
   applySettingsToDOM();
 }
 
@@ -5856,14 +5956,28 @@ function removeCard(idx) {
 }
 
 function applySettingsToDOM(rerender) {
-  // Panel mode
+  // Panel mode (browser)
   const nav = document.getElementById('left-nav');
+  const isMobile = window.innerWidth <= 768;
   if (appSettings.panelMode === 'slideover') {
     document.body.classList.add('nav-slideover');
     if (nav) nav.classList.remove('open');
   } else {
     document.body.classList.remove('nav-slideover');
     if (nav) nav.classList.remove('open');
+  }
+  // Mobile panel mode
+  const mob = appSettings.mobilePanelMode || 'icons';
+  document.body.classList.toggle('mobile-panel-icons', mob === 'icons');
+  document.body.classList.toggle('mobile-panel-slideover', mob === 'slideover');
+  // Lock editing
+  const locked = !!appSettings.lockEditing;
+  document.body.classList.toggle('edit-locked', locked);
+  // Update lock indicator in top bar
+  const lockBtn = document.getElementById('lock-indicator');
+  if (lockBtn) {
+    lockBtn.title = locked ? 'View only — editing locked' : '';
+    lockBtn.style.display = locked ? 'flex' : 'none';
   }
   // Theme
   document.body.classList.toggle('theme-light', appSettings.theme === 'light');
@@ -6207,13 +6321,36 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="settings-group-label">Side Panel</div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Panel mode</div>
-            <div class="setting-sub">Fixed always-on or slide over</div>
+            <div class="setting-label">Browser panel</div>
+            <div class="setting-sub">Fixed always-on or slide-over</div>
           </div>
           <select class="setting-select" id="s-panel-mode" onchange="applySettings()">
             <option value="fixed">Fixed open</option>
             <option value="slideover">Slide-over</option>
           </select>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Mobile panel</div>
+            <div class="setting-sub">Icon rail (always visible) or slide-over</div>
+          </div>
+          <select class="setting-select" id="s-mobile-panel-mode" onchange="applySettings()">
+            <option value="icons">Icon rail</option>
+            <option value="slideover">Slide-over</option>
+          </select>
+        </div>
+      </div>
+      <div class="settings-group">
+        <div class="settings-group-label">Editing</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Lock editing</div>
+            <div class="setting-sub">View-only mode — prevents accidental changes</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="s-lock-editing" onchange="applySettings()">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
       </div>
       <div class="settings-group">
