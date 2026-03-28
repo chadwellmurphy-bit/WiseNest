@@ -1232,18 +1232,14 @@
   .undo-btn {
     background: var(--surface2);
     border: 1px solid var(--border);
-    color: var(--muted);
-    height: 28px;
+    color: var(--text);
+    width: 32px; height: 32px;
     border-radius: 8px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    gap: 5px;
-    padding: 0 10px;
-    font-family: var(--font-sans);
-    font-size: 0.8em;
-    font-weight: 500;
+    padding: 0;
     transition: all .15s; flex-shrink: 0;
-    white-space: nowrap;
   }
+  #undo-btn:not(:disabled) { color: var(--accent2); }
   .undo-btn:not(:disabled):hover { border-color: var(--accent2); color: var(--accent2); background: rgba(91,138,255,.08); }
 
   /* ── HAMBURGER ─────────────────────────────────────────── */
@@ -1505,22 +1501,26 @@
     transition: all .15s; margin-top: 4px;
   }
   .reset-btn:hover { background: rgba(255,91,122,.1); }
-  /* ── MOBILE / IPHONE RESPONSIVE ───────────────────────── */
+  /* ── CALENDAR 2-ROW HEADER ─────────────────────────────── */
+  .cal-header-wrap {
+    display: flex; flex-direction: column;
+    padding: 12px 20px 10px;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+  .cal-header-row1 {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .cal-header-row2 {
+    display: flex; align-items: center;
+  }
 
+  /* ── MOBILE / IPHONE ────────────────────────────────────── */
   @media (max-width: 768px) {
-    /* Show hamburger on mobile only when fixed mode */
+    /* Hamburger: show on mobile in fixed-open mode only */
     body:not(.nav-slideover) .hamburger-btn { display: flex; }
 
-    /* Larger nav item text on mobile */
-    .left-nav .nav-item {
-      font-size: 1.05em;
-      padding: 13px 14px;
-    }
-    .left-nav .nav-section-label { font-size: 0.75em; }
-    .left-nav .nav-badge { font-size: 0.8em; padding: 2px 7px; }
-    .left-nav .nav-icon { width: 20px; height: 20px; }
-
-    /* Force slide-over for fixed-mode on small screens */
+    /* Nav slide-over (mobile, fixed mode) */
     body:not(.nav-slideover) .left-nav {
       transform: translateX(-100%);
       transition: transform .28s cubic-bezier(.4,0,.2,1);
@@ -1533,43 +1533,43 @@
     }
     body:not(.nav-slideover) .nav-overlay.open { display: block; }
     body:not(.nav-slideover) .main-content { margin-left: 0 !important; }
-    body:not(.nav-slideover) .top-bar { left: 0 !important; }
+    body:not(.nav-slideover) .top-bar       { left: 0 !important; }
 
-    /* ── TOP BAR: fit everything on iPhone ── */
-    .top-bar { padding: 8px 10px; gap: 6px; }
-    .top-bar-title { font-size: 0.95em; }
+    /* Larger nav items */
+    .left-nav .nav-item         { font-size: 1.05em; padding: 13px 14px; }
+    .left-nav .nav-section-label{ font-size: 0.75em; }
+    .left-nav .nav-badge        { font-size: 0.8em; padding: 2px 7px; }
+    .left-nav .nav-icon         { width: 20px; height: 20px; }
 
-    /* Undo: icon-only — hide the text label */
-    .undo-label { display: none; }
-    .undo-btn {
-      width: 32px; height: 32px; padding: 0;
-      /* Higher brightness so arrow is clearly visible */
-      color: var(--text);
-      opacity: inherit !important; /* let JS control opacity normally */
-    }
-    /* Keep disabled visual but make enabled state bright */
-    #undo-btn:not(:disabled) { opacity: 1 !important; color: var(--accent2); }
+    /* Top bar compact — fit all items */
+    .top-bar         { padding: 8px 10px; gap: 6px; }
+    .top-bar-title   { font-size: 0.95em; }
+    .gear-btn        { width: 32px; height: 32px; }
+    .month-nav       { gap: 4px; }
+    .month-nav button{ width: 26px; height: 26px; font-size: 0.85em; }
+    .year-btn        { font-size: 0.9em; padding: 3px 5px; }
 
-    /* Gear btn: same square size as hamburger */
-    .gear-btn { width: 32px; height: 32px; }
+    /* Calendar grid — fit 7 columns */
+    #calendar-body { padding: 8px !important; }
+    .cal-grid      { gap: 3px; }
+    .cal-cell      { min-height: 52px; padding: 4px 3px; border-radius: 6px; }
+    .cal-day       { font-size: 0.75em; }
+    .cal-entry-income, .cal-entry-expense { font-size: 0.6em; }
+    .cal-dow       { font-size: 0.6em; padding-bottom: 5px; }
+    .cal-view-btn  { padding: 4px 8px; font-size: 0.65em; }
+    .cal-header-wrap { padding: 10px 12px 8px; }
 
-    /* Month-year group: tighter */
-    .month-nav { gap: 4px; }
-    .month-nav button { width: 26px; height: 26px; font-size: 0.85em; }
-    .year-btn { font-size: 0.9em; padding: 3px 5px; }
-
-    /* General layout */
+    /* General */
     .summary-strip { grid-template-columns: 1fr 1fr; }
-    .main-grid { grid-template-columns: 1fr; }
-    header { flex-direction: column; align-items: flex-start; gap: 16px; }
-    .nav-item { min-height: 44px; }
+    .main-grid     { grid-template-columns: 1fr; }
+    .nav-item      { min-height: 44px; }
   }
 
   @media (max-width: 480px) {
     .summary-strip { grid-template-columns: 1fr; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
-    .page { padding: 14px; }
-    .top-bar { padding: 6px 8px; }
+    .page          { padding: 14px; }
+    .top-bar       { padding: 6px 8px; }
     .top-bar-title { font-size: 0.85em; }
   }
 
@@ -1651,7 +1651,6 @@
       <div class="top-bar-title" id="page-title">Credit Cards</div>
       <button id="undo-btn" class="undo-btn" onclick="performUndo()" title="Undo last change (⌘Z)" style="opacity: 0.3; cursor: not-allowed;" disabled="">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7H11a4 4 0 0 1 0 8H7"></path><path d="M3 7L6 4M3 7L6 10"></path></svg>
-        <span class="undo-label">Undo</span>
       </button>
     </div>
 
@@ -2808,21 +2807,26 @@
   <!-- ══ PAGE: CALENDAR ════════════════════════════════════ -->
   <div class="page" id="page-calendar">
   <div class="section" id="calendar-section" style="margin-top:0">
-    <div class="section-header" style="cursor:default">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div class="section-dot" style="background: var(--accent)"></div>
-        <span style="font-weight:500;font-size:0.9286em" id="cal-month-label">Feb 2026</span>
+    <div class="cal-header-wrap">
+      <!-- Row 1: period label + prev/next -->
+      <div class="cal-header-row1">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="section-dot" style="background:var(--accent)"></div>
+          <span style="font-weight:500;font-size:0.9286em" id="cal-month-label">Feb 2026</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="icon-btn" onclick="calPrevPeriod()" style="opacity:1;width:28px;height:28px">←</button>
+          <button class="icon-btn" onclick="calNextPeriod()" style="opacity:1;width:28px;height:28px">→</button>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <!-- View mode tabs -->
+      <!-- Row 2: view tabs -->
+      <div class="cal-header-row2">
         <div class="cal-view-tabs">
           <button class="cal-view-btn active" onclick="setCalView('month')">Month</button>
           <button class="cal-view-btn" onclick="setCalView('week')">Week</button>
           <button class="cal-view-btn" onclick="setCalView('day')">Day</button>
           <button class="cal-view-btn" onclick="setCalView('year')">Year</button>
         </div>
-        <button class="icon-btn" onclick="calPrevPeriod()" style="opacity:1;width:28px;height:28px">←</button>
-        <button class="icon-btn" onclick="calNextPeriod()" style="opacity:1;width:28px;height:28px">→</button>
       </div>
     </div>
     <div id="calendar-body" style="padding:16px"><div class="cal-grid"><div class="cal-dow">Su</div><div class="cal-dow">Mo</div><div class="cal-dow">Tu</div><div class="cal-dow">We</div><div class="cal-dow">Th</div><div class="cal-dow">Fr</div><div class="cal-dow">Sa</div><div class="cal-cell" style="position:relative"><div class="cal-day">1</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">2</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">3</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">4</div></div><div class="cal-cell cal-has-income" style="position:relative" data-calday="5" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(5)"><div class="cal-day">5</div><div class="cal-entry-income">$1,100</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">6</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">7</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">8</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">9</div></div><div class="cal-cell cal-has-pay" style="position:relative" data-calday="10" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(10)"><div class="cal-day">10</div><div class="cal-entry-expense">$167</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">11</div></div><div class="cal-cell cal-has-income" style="position:relative" data-calday="12" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(12)"><div class="cal-day">12</div><div class="cal-entry-income">$1,880</div><div class="cal-override-badge">edited</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">13</div></div><div class="cal-cell cal-has-pay" style="position:relative" data-calday="14" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(14)"><div class="cal-day">14</div><div class="cal-entry-expense">$565</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">15</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">16</div></div><div class="cal-cell cal-has-pay" style="position:relative" data-calday="17" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(17)"><div class="cal-day">17</div><div class="cal-entry-expense">$17</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">18</div></div><div class="cal-cell cal-has-both" style="position:relative" data-calday="19" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(19)"><div class="cal-day">19</div><div class="cal-entry-expense">$119</div><div class="cal-entry-income">$1,100</div></div><div class="cal-cell cal-has-both" style="position:relative" data-calday="20" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(20)"><div class="cal-day">20</div><div class="cal-entry-expense">$333</div><div class="cal-entry-income">$257</div></div><div class="cal-cell cal-has-pay" style="position:relative" data-calday="21" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(21)"><div class="cal-day">21</div><div class="cal-entry-expense">$2,072</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">22</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">23</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">24</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">25</div></div><div class="cal-cell cal-has-income" style="position:relative" data-calday="26" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(26)"><div class="cal-day">26</div><div class="cal-entry-income">$1,867</div><div class="cal-override-badge">edited</div></div><div class="cal-cell" style="position:relative"><div class="cal-day">27</div></div><div class="cal-cell cal-has-pay" style="position:relative" data-calday="28" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail(28)"><div class="cal-day">28</div><div class="cal-entry-expense">$987</div></div></div></div>
@@ -6354,104 +6358,145 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <script>
-// ── MOBILE: swipe-to-open nav + pinch-zoom text scaling ─────────────────
-(function(){
+/* ════════════════════════════════════════════════════════════════════
+   MOBILE ENHANCEMENTS
+   ════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
 
-  /* ─ Swipe to open/close nav ─────────────────────────────── */
-  var swipeStartX = 0, swipeStartY = 0;
-  var swipeTracking = false;
-  var SWIPE_THRESHOLD = 50;   // min horizontal distance to count as swipe
-  var SWIPE_EDGE = 30;        // px from left edge to start an open-swipe
-  var SWIPE_MAX_Y = 80;       // max vertical drift before we ignore
-
-  function isMobileFixed(){
-    return window.innerWidth <= 768 && !document.body.classList.contains('nav-slideover');
+  /* ── helpers ─────────────────────────────────────────────────────── */
+  function isMobileFixed () {
+    return window.innerWidth <= 768 &&
+           !document.body.classList.contains('nav-slideover');
   }
 
-  document.addEventListener('touchstart', function(e){
-    if (!isMobileFixed()) return;
-    var t = e.touches[0];
-    swipeStartX = t.clientX;
-    swipeStartY = t.clientY;
-    swipeTracking = true;
+  /* ══ A. SWIPE TO OPEN/CLOSE NAV ═════════════════════════════════════
+     Swipe RIGHT from the left edge (≤30 px) → open nav
+     Swipe LEFT  anywhere while open           → close nav              */
+  var nsX = 0, nsY = 0;
+  var NAV_EDGE = 30, NAV_MIN = 50, NAV_YMAX = 80;
+
+  document.addEventListener('touchstart', function (e) {
+    nsX = e.touches[0].clientX;
+    nsY = e.touches[0].clientY;
   }, { passive: true });
 
-  document.addEventListener('touchend', function(e){
-    if (!swipeTracking) return;
-    swipeTracking = false;
-    var t = e.changedTouches[0];
-    var dx = t.clientX - swipeStartX;
-    var dy = Math.abs(t.clientY - swipeStartY);
-    if (dy > SWIPE_MAX_Y) return; // too vertical, ignore
+  document.addEventListener('touchend', function (e) {
+    if (!isMobileFixed()) return;
+    var t  = e.changedTouches[0];
+    var dx = t.clientX - nsX;
+    var dy = Math.abs(t.clientY - nsY);
+    if (dy > NAV_YMAX) return;
     var nav = document.getElementById('left-nav');
     if (!nav) return;
-    var isOpen = nav.classList.contains('open');
-    // Swipe RIGHT from left edge → open
-    if (!isOpen && dx > SWIPE_THRESHOLD && swipeStartX < SWIPE_EDGE) {
-      toggleNav();
-    }
-    // Swipe LEFT when open → close
-    if (isOpen && dx < -SWIPE_THRESHOLD) {
-      closeNav();
-    }
+    var open = nav.classList.contains('open');
+    if (!open && dx >  NAV_MIN && nsX < NAV_EDGE) { toggleNav(); }
+    if ( open && dx < -NAV_MIN)                    { closeNav();  }
   }, { passive: true });
 
-  /* ─ Close nav when nav-item tapped on mobile ─────────────── */
-  var nav = document.getElementById('left-nav');
-  if (nav) {
-    nav.querySelectorAll('.nav-item').forEach(function(item){
-      item.addEventListener('click', function(){
+  /* Close nav when a nav-item is tapped on mobile */
+  var navEl = document.getElementById('left-nav');
+  if (navEl) {
+    navEl.querySelectorAll('.nav-item').forEach(function (item) {
+      item.addEventListener('click', function () {
         if (isMobileFixed()) closeNav();
       });
     });
   }
 
-  /* ─ Pinch-zoom: scale only font size, not page layout ─────── */
-  // We track pinch gesture and translate scale into a font-size multiplier.
-  // The html element gets a CSS custom property --pinch-scale that drives
-  // font size. Layout (px widths, heights) stays fixed.
-  var pinchStartDist = 0;
-  var pinchBaseFontPct = 100; // current base in % (100 = default)
-  var PINCH_MIN = 80;
-  var PINCH_MAX = 200;
-
-  function getTouchDist(e){
-    if (e.touches.length < 2) return 0;
-    var dx = e.touches[0].clientX - e.touches[1].clientX;
-    var dy = e.touches[0].clientY - e.touches[1].clientY;
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-
-  document.addEventListener('touchstart', function(e){
-    if (e.touches.length === 2) {
-      pinchStartDist = getTouchDist(e);
-      // Read current scale from CSS var
-      var cur = parseFloat(document.documentElement.style.getPropertyValue('--pinch-font-pct') || '100');
-      pinchBaseFontPct = cur;
-    }
-  }, { passive: true });
-
-  document.addEventListener('touchmove', function(e){
-    if (e.touches.length !== 2 || pinchStartDist === 0) return;
-    var dist = getTouchDist(e);
-    var scale = dist / pinchStartDist;
-    var newPct = Math.min(PINCH_MAX, Math.max(PINCH_MIN, pinchBaseFontPct * scale));
-    document.documentElement.style.setProperty('--pinch-font-pct', newPct.toFixed(1));
-    document.documentElement.style.fontSize = newPct + '%';
-  }, { passive: true });
-
-  document.addEventListener('touchend', function(e){
-    if (e.touches.length < 2) pinchStartDist = 0;
-  }, { passive: true });
-
-  /* ─ Resize cleanup ───────────────────────────────────────── */
-  window.addEventListener('resize', function(){
-    if (window.innerWidth > 768 && !document.body.classList.contains('nav-slideover')) {
-      closeNav();
-    }
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 768 &&
+        !document.body.classList.contains('nav-slideover')) { closeNav(); }
   });
 
-})();
+  /* ══ B. PINCH-ZOOM = TEXT-SIZE ONLY, NOT PAGE LAYOUT ════════════════
+     We call e.preventDefault() on touchmove (non-passive listener) to
+     block Safari's built-in page zoom.  Instead we scale the root
+     font-size, which enlarges all em/rem-based sizes while px-based
+     layout widths stay fixed.
+     Double-tap anywhere resets to 100 %.                               */
+  var pinchOn   = false;
+  var pinchD0   = 0;       // finger distance at gesture start
+  var pinchF0   = 100;     // font % at gesture start
+  var FMIN = 70, FMAX = 200;
+
+  function fingerDist (e) {
+    var dx = e.touches[0].clientX - e.touches[1].clientX;
+    var dy = e.touches[0].clientY - e.touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function curFontPct () {
+    var s = document.documentElement.style.fontSize;
+    var n = parseFloat(s);
+    return (s && !isNaN(n)) ? n : 100;
+  }
+
+  document.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 2) {
+      pinchOn = true;
+      pinchD0 = fingerDist(e);
+      pinchF0 = curFontPct();
+    } else {
+      pinchOn = false;
+    }
+  }, { passive: true });
+
+  /* NON-PASSIVE — must be able to preventDefault to block native zoom */
+  document.addEventListener('touchmove', function (e) {
+    if (!pinchOn || e.touches.length !== 2) return;
+    e.preventDefault();                              // ← blocks native zoom
+    var scale  = fingerDist(e) / (pinchD0 || 1);
+    var newPct = Math.min(FMAX, Math.max(FMIN, pinchF0 * scale));
+    document.documentElement.style.fontSize = newPct.toFixed(1) + '%';
+  }, { passive: false });                            // ← non-passive required
+
+  document.addEventListener('touchend', function (e) {
+    if (e.touches.length < 2) { pinchOn = false; pinchD0 = 0; }
+  }, { passive: true });
+
+  /* Double-tap → reset font size */
+  var lastTap = 0;
+  document.addEventListener('touchend', function (e) {
+    if (e.touches.length > 0) return;
+    var now = Date.now();
+    if (now - lastTap < 320) {
+      document.documentElement.style.fontSize = '100%';
+      pinchF0 = 100;
+    }
+    lastTap = now;
+  }, { passive: true });
+
+  /* ══ C. CALENDAR SWIPE BETWEEN PERIODS ══════════════════════════════
+     Swipe LEFT  on calendar-body → next period
+     Swipe RIGHT on calendar-body → prev period                         */
+  var csX = null, csY = null;
+  var CAL_MIN = 60, CAL_YMAX = 100;
+
+  document.addEventListener('touchstart', function (e) {
+    var cb = document.getElementById('calendar-body');
+    if (!cb) { csX = null; return; }
+    var r = cb.getBoundingClientRect();
+    var t = e.touches[0];
+    if (t.clientX >= r.left && t.clientX <= r.right &&
+        t.clientY >= r.top  && t.clientY <= r.bottom) {
+      csX = t.clientX; csY = t.clientY;
+    } else {
+      csX = null;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', function (e) {
+    if (csX === null) return;
+    var t  = e.changedTouches[0];
+    var dx = t.clientX - csX;
+    var dy = Math.abs(t.clientY - csY);
+    csX = null;
+    if (dy > CAL_YMAX || Math.abs(dx) < CAL_MIN) return;
+    if (dx < 0) { if (typeof calNextPeriod === 'function') calNextPeriod(); }
+    else        { if (typeof calPrevPeriod === 'function') calPrevPeriod(); }
+  }, { passive: true });
+
+}());
 </script>
 
 </body></html>
