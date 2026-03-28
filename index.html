@@ -486,13 +486,15 @@
     background: transparent;
     border: none;
     text-align: right;
-    width: 90px;
+    width: 100%;
+    min-width: 70px;
     color: var(--text);
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 4px;
     border: 1px solid transparent;
     transition: all 0.15s;
+    box-sizing: border-box;
   }
   .amount-input:hover { border-color: var(--border); background: var(--surface2); }
   .amount-input:focus { outline: none; border-color: var(--accent); background: var(--surface2); color: var(--accent); }
@@ -991,8 +993,11 @@
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: 1fr;
     gap: 5px;
   }
+  /* DOW labels row must NOT stretch — only data rows */
+  .cal-grid .cal-dow { align-self: end; }
   .cal-dow {
     font-family:var(--font-mono);
     font-size: 0.7143em; color: var(--muted);
@@ -3599,12 +3604,11 @@ function renderIncome() {
     const monthly = monthlyIncome(item);
     const freq = FREQ_LABELS[item.freq] || 'Monthly';
     return `
-    <div class="line-item" style="grid-template-columns:1fr auto auto auto">
-      <div class="name">
-        ${item.name}
-        <span class="note">${freq}</span>
+    <div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">
+      <div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <span>${item.name}</span>
+        <span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">${freq} &middot; ${fmt(monthly)}/mo</span>
       </div>
-      <span class="note" style="white-space:nowrap;font-family:var(--font-mono);font-size:0.7857em;color:var(--muted)">${fmt(monthly)}/mo</span>
       <div class="item-actions">
         <button class="icon-btn" onclick="editIncome('${item.id}')" title="Edit">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
@@ -3743,7 +3747,7 @@ function renderExpenses() {
   }
 
   // Column header row
-  const COLS = "minmax(120px,1fr) minmax(80px,100px) 52px 70px 88px 56px";
+  const COLS = "minmax(120px,1fr) minmax(80px,100px) 52px 70px minmax(80px,auto) 56px";
   const header = `<div style="display:grid;grid-template-columns:${COLS};align-items:center;padding:6px 20px;border-bottom:1px solid var(--border);gap:8px">
     <button class="sort-col-btn" onclick="sortExpenses('name')">Name ${sortIcon('name')}</button>
     <button class="sort-col-btn" onclick="sortExpenses('category')">Category ${sortIcon('category')}</button>
@@ -5866,7 +5870,7 @@ function applySettingsToDOM(rerender) {
   // Density
   document.body.classList.toggle('density-compact', appSettings.density === 'compact');
   // Typography — font size
-  const fontSizeMap = { small: '12px', medium: '14px', large: '16px', xlarge: '18px' };
+  const fontSizeMap = { small: '13px', medium: '15px', large: '17px', xlarge: '19px', xxlarge: '21px' };
   document.documentElement.style.setProperty('--base-font-size', fontSizeMap[appSettings.fontSize] || '14px');
   // Typography — font style
   const fontStyleMap = {
@@ -6244,6 +6248,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <option value="medium" selected="">Medium</option>
             <option value="large">Large</option>
             <option value="xlarge">X-Large</option>
+            <option value="xxlarge">XX-Large</option>
           </select>
         </div>
         <div class="setting-row">
