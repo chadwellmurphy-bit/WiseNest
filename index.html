@@ -3301,7 +3301,9 @@ async function pushToGist() {
   const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
     method: 'PATCH',
     headers: {
-      'Authorization': `token ${gistToken()}`,
+      'Authorization': `Bearer ${gistToken()}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ files: { 'budget-data.json': { content: payload } } }),
@@ -3315,7 +3317,11 @@ async function pushToGist() {
 
 async function pullFromGist() {
   const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
-    headers: { 'Authorization': `token ${gistToken()}` },
+    headers: {
+      'Authorization': `Bearer ${gistToken()}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
