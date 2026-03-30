@@ -1706,8 +1706,34 @@
     .top-bar-title { font-size: 0.85em; }
   }
 
+  /* ── PULL TO REFRESH ───────────────────────────────────────── */
+  #ptr-indicator {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+    height: 0; overflow: hidden;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    color: var(--muted);
+    z-index: 999;
+    transition: height 0.15s ease;
+    pointer-events: none;
+  }
+  #ptr-indicator.ptr-ready { color: var(--accent); }
+  #ptr-indicator.ptr-loading { color: var(--income-green); }
+  #ptr-spinner {
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+  #ptr-indicator.ptr-loading #ptr-spinner {
+    animation: ptr-spin 0.7s linear infinite;
+  }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+
 </style>
-</head>
 <body class="density-compact">
 <div class="shell">
 
@@ -1775,6 +1801,12 @@
 
 <!-- ═══ MAIN CONTENT ════════════════════════════════════════ -->
 <div class="main-content">
+
+  <!-- PULL TO REFRESH INDICATOR -->
+  <div id="ptr-indicator">
+    <span id="ptr-spinner">↻</span>
+    <span id="ptr-label">Pull to sync</span>
+  </div>
 
   <!-- NAV OVERLAY (slide-over) -->
   <div class="nav-overlay" id="nav-overlay" onclick="closeNav()"></div>
@@ -6153,6 +6185,73 @@ document.addEventListener('DOMContentLoaded', async () => {
     setSyncStatus('idle', '☁️ Log in');
   }
 });
+
+// ─── PULL TO REFRESH ────────────────────────────────────────────
+(function initPullToRefresh() {
+  const THRESHOLD = 80;
+  let startY = 0, pulling = false, triggered = false;
+  const indicator = document.getElementById('ptr-indicator');
+  const label     = document.getElementById('ptr-label');
+  const spinner   = document.getElementById('ptr-spinner');
+
+  function setHeight(px) {
+    indicator.style.height = Math.min(px, THRESHOLD) + 'px';
+  }
+
+  document.addEventListener('touchstart', e => {
+    if (window.scrollY > 0) return;
+    startY = e.touches[0].clientY;
+    pulling = true; triggered = false;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { pulling = false; setHeight(0); return; }
+    setHeight(dy);
+    spinner.style.transform = `rotate(${Math.min(dy / THRESHOLD, 1) * 360}deg)`;
+    if (dy >= THRESHOLD && !triggered) {
+      triggered = true;
+      indicator.classList.add('ptr-ready');
+      label.textContent = 'Release to sync';
+    } else if (dy < THRESHOLD) {
+      indicator.classList.remove('ptr-ready');
+      label.textContent = 'Pull to sync';
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', async () => {
+    if (!pulling) return;
+    pulling = false;
+    if (!triggered) { setHeight(0); indicator.classList.remove('ptr-ready'); return; }
+    indicator.classList.remove('ptr-ready');
+    indicator.classList.add('ptr-loading');
+    setHeight(THRESHOLD);
+    label.textContent = 'Syncing…';
+    if (gistConfigured()) {
+      const ok = await loadFromGist();
+      if (ok) {
+        renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+        renderCreditCardsPage(); updateSummary(); renderCalendar();
+        label.textContent = '✓ Synced';
+        setSyncStatus('ok', '✓ Synced');
+        setTimeout(() => setSyncStatus('idle'), 2500);
+      } else {
+        label.textContent = 'Sync failed';
+        setSyncStatus('error', 'Could not sync');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      }
+    } else {
+      label.textContent = 'Not logged in — tap ☁️ to set up';
+    }
+    setTimeout(() => {
+      setHeight(0);
+      indicator.classList.remove('ptr-loading');
+      label.textContent = 'Pull to sync';
+      spinner.style.transform = 'rotate(0deg)';
+    }, 1000);
+  });
+})();
 </script>
 
 <!-- EXPENSE MODAL -->
