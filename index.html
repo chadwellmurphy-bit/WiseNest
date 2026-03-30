@@ -1765,7 +1765,10 @@
   </div>
 
   <div class="nav-footer">
-    <button class="save-btn" id="save-btn" onclick="handleSave()" style="width:100%;justify-content:center"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg> Save</button>
+    <div style="display:flex;gap:6px;width:100%">
+      <button class="save-btn" id="save-btn" onclick="handleSave()" style="flex:1;justify-content:center"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg> Save</button>
+      <button id="sync-pull-btn" onclick="handlePull()" title="Pull latest data from Gist" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:10px;cursor:pointer;padding:0 12px;font-size:1.1em;transition:all .15s;flex-shrink:0" onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↻</button>
+    </div>
     <div id="sync-status" onclick="showGistSetup()" style="font-size:0.7143em;font-family:var(--font-mono);color:var(--muted);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
   </div>
 </nav>
@@ -3394,12 +3397,33 @@ function saveGistConfig() {
 function setSyncStatus(state, msg) {
   const el = document.getElementById('sync-status');
   if (!el) return;
-  const icons = { idle: '☁️', syncing: '⏳', ok: '✓', error: '✗' };
+  const icons = { idle: '', syncing: '⏳', ok: '✓', error: '✗' };
   const colors = { idle: 'var(--muted)', syncing: 'var(--muted)', ok: 'var(--income-green)', error: 'var(--expense-red)' };
-  el.textContent = (icons[state] || '') + ' ' + (msg || { idle: 'Log in', syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' }[state] || '');
+  const defaults = { idle: gistConfigured() ? '☁️ Synced' : '☁️ Log in', syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' };
+  el.textContent = ((icons[state] ? icons[state] + ' ' : '') + (msg || defaults[state] || '')).trim();
   el.style.color = colors[state] || 'var(--muted)';
 }
 function updateSyncStatus(state, msg) { setSyncStatus(state, msg); }
+
+async function handlePull() {
+  if (!gistConfigured()) { showGistSetup(); return; }
+  const btn = document.getElementById('sync-pull-btn');
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  setSyncStatus('syncing');
+  const ok = await loadFromGist();
+  if (ok) {
+    renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+    renderCreditCardsPage(); updateSummary(); renderCalendar();
+    setSyncStatus('ok', '✓ Pulled latest');
+    setTimeout(() => setSyncStatus('idle'), 2500);
+  } else {
+    setSyncStatus('error', 'Could not pull — check connection');
+    setTimeout(() => setSyncStatus('idle'), 3000);
+  }
+  btn.textContent = '↻';
+  btn.disabled = false;
+}
 
 async function handleSave() {
   saveSettings();
@@ -6106,27 +6130,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }, 100);
 
-  // Populate sync setup fields if already configured
+  // Restore saved credentials into setup fields
   const t = localStorage.getItem('gist_token') || '';
   const g = localStorage.getItem('gist_id') || '';
   if (t) document.getElementById('gist-token-input').value = t;
   if (g) document.getElementById('gist-id-input').value = g;
 
-  // Pull latest data from Gist on load
+  // Pull latest data from Gist on every load (stays logged in)
   if (gistConfigured()) {
     setSyncStatus('syncing');
     const ok = await loadFromGist();
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
       renderCreditCardsPage(); updateSummary(); renderCalendar();
-      setSyncStatus('ok', 'Loaded from Gist');
-      setTimeout(() => setSyncStatus('idle'), 3000);
+      setSyncStatus('ok', '✓ Synced');
+      setTimeout(() => setSyncStatus('idle'), 2500);
     } else {
-      setSyncStatus('error', 'Could not load from Gist');
+      setSyncStatus('error', 'Could not sync — check connection');
       setTimeout(() => setSyncStatus('idle'), 4000);
     }
   } else {
-    setSyncStatus('idle', 'Log in');
+    setSyncStatus('idle', '☁️ Log in');
   }
 });
 </script>
