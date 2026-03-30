@@ -1766,6 +1766,7 @@
 
   <div class="nav-footer">
     <button class="save-btn" id="save-btn" onclick="handleSave()" style="width:100%;justify-content:center"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg> Save</button>
+    <div id="sync-status" onclick="showGistSetup()" style="font-size:0.7143em;font-family:var(--font-mono);color:var(--muted);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Gist not configured</div>
   </div>
 </nav>
 
@@ -3270,11 +3271,13 @@ function loadState() {
   } catch(e) { console.warn('loadState error', e); }
 }
 
-function handleSave() {
-  // Save to localStorage
-  saveSettings();
-  // Save under multiple keys so data survives filename changes
-  const _saveData = JSON.stringify({
+// ─── GIST SYNC ──────────────────────────────────────────────────
+function gistToken()  { return localStorage.getItem('gist_token') || ''; }
+function gistId()     { return localStorage.getItem('gist_id') || ''; }
+function gistConfigured() { return !!(gistToken() && gistId()); }
+
+function buildSavePayload() {
+  return {
     expenses: expenseAmounts,
     income: incomeAmounts,
     incomeItems: budget.income,
@@ -3290,68 +3293,158 @@ function handleSave() {
     rogersPointsRedemptions,
     creditCards,
     ccActualSpend,
+  };
+}
+
+async function pushToGist() {
+  const payload = JSON.stringify(buildSavePayload(), null, 2);
+  const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `token ${gistToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ files: { 'budget-data.json': { content: payload } } }),
   });
-  ['budget2026','budget-tracker','household-budget'].forEach(k => localStorage.setItem(k, _saveData));
-
-  // Build updated HTML by splicing live data into sentinel blocks.
-  // Temporarily clear dynamically-rendered containers that may contain sentinel
-  // comment strings, so indexOf always finds the correct one in <script>.
-  const ccList = document.getElementById('creditcards-list');
-  const ccListHTML = ccList ? ccList.innerHTML : '';
-  if (ccList) ccList.innerHTML = '';
-
-  const src = document.documentElement.outerHTML;
-
-  // Restore immediately
-  if (ccList) ccList.innerHTML = ccListHTML;
-
-  function splice(text, startToken, endToken, replacement) {
-    const s = text.indexOf(startToken);
-    const e = text.indexOf(endToken);
-    if (s === -1 || e === -1) { console.warn('Missing sentinel:', startToken); return text; }
-    return text.slice(0, s) + startToken + '\n' + replacement + '\n' + text.slice(e);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `HTTP ${res.status}`);
   }
+  return true;
+}
 
-  const budgetJS  = 'const budget = ' + JSON.stringify({ income: budget.income, expenses: budget.expenses }, null, 2) + ';';
-  const debtsJS   = 'const debts = ' + JSON.stringify(debts, null, 2) + ';';
-  const investJS  = 'const investments = ' + JSON.stringify(investments, null, 2) + ';';
-  const catJS     = 'let categoryColors = ' + JSON.stringify(categoryColors, null, 2) + ';';
-  const overridesJS = 'let monthOverrides = ' + JSON.stringify(monthOverrides) + ';';
-  const amountsJS = 'let expenseAmounts = ' + JSON.stringify(expenseAmounts) + ';\nlet incomeAmounts = ' + JSON.stringify(incomeAmounts) + ';';
+async function pullFromGist() {
+  const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
+    headers: { 'Authorization': `token ${gistToken()}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const file = data.files && data.files['budget-data.json'];
+  if (!file) throw new Error('budget-data.json not found in Gist');
+  const content = file.content || file.raw_url && await (await fetch(file.raw_url)).text();
+  return JSON.parse(content);
+}
 
-  // incomeActuals handled inline in splice
-  let out = splice(src, '// BUDGET_START',      '// BUDGET_END',      budgetJS);
-  out     = splice(out,  '// DEBTS_START',       '// DEBTS_END',       debtsJS);
-  out     = splice(out,  '// INVESTMENTS_START', '// INVESTMENTS_END', investJS);
-  out     = splice(out,  '// CATCOLORS_START',   '// CATCOLORS_END',   catJS);
-  out     = splice(out,  '// AMOUNTS_START',     '// AMOUNTS_END',     amountsJS);
-  out     = splice(out,  '// OVERRIDES_START',   '// OVERRIDES_END',   overridesJS);
-  out     = splice(out,  '// MONTHLY_EXPENSES_START', '// MONTHLY_EXPENSES_END',
-    'let expenseHistory = ' + JSON.stringify(expenseHistory) + ';\n// expenseHistory: { "carins": [{yr:2026,mo:0,amount:336},...], ... }\n// Entries sorted oldest→newest. A month\'s amount = newest entry whose yr/mo <= requested.');
-  out     = splice(out,  '// ACTUALS_START',     '// ACTUALS_END',     'let incomeActuals = ' + JSON.stringify(incomeActuals) + ';');
-  out     = splice(out,  '// MONTHLY_DEBTS_START',   '// MONTHLY_DEBTS_END',   'let monthlyDebts = '   + JSON.stringify(monthlyDebts)   + ';');
-  out     = splice(out,  '// MONTHLY_INVESTS_START', '// MONTHLY_INVESTS_END', 'let monthlyInvests = ' + JSON.stringify(monthlyInvests) + ';');
-  out     = splice(out,  '// ROGERS_POINTS_START',   '// ROGERS_POINTS_END',   'let rogersPointsRedemptions = ' + JSON.stringify(rogersPointsRedemptions) + ';');
-  out     = splice(out,  '// CREDIT_CARDS_START',    '// CREDIT_CARDS_END',    'let creditCards = ' + JSON.stringify(creditCards) + ';');
-  out     = splice(out,  '// CC_ACTUAL_START',        '// CC_ACTUAL_END',        'let ccActualSpend = ' + JSON.stringify(ccActualSpend) + ';');
+async function loadFromGist() {
+  if (!gistConfigured()) return false;
+  try {
+    const saved = await pullFromGist();
+    if (!saved || !Object.keys(saved).length) return false;
+    if (saved.expenses)        expenseAmounts = saved.expenses;
+    if (saved.income)          incomeAmounts  = saved.income;
+    if (saved.incomeItems)     budget.income    = saved.incomeItems;
+    if (saved.expenseItems)    budget.expenses  = saved.expenseItems;
+    if (saved.categoryColors)  Object.assign(categoryColors, saved.categoryColors);
+    if (saved.debtsData)       { debts.length = 0; debts.push(...saved.debtsData); }
+    if (saved.investmentsData) { investments.length = 0; investments.push(...saved.investmentsData); }
+    if (saved.monthOverrides)       monthOverrides = saved.monthOverrides;
+    if (saved.expenseHistory)       expenseHistory = saved.expenseHistory;
+    if (saved.incomeActuals)        incomeActuals  = saved.incomeActuals;
+    if (saved.monthlyDebts)    monthlyDebts   = saved.monthlyDebts;
+    if (saved.monthlyInvests)  monthlyInvests = saved.monthlyInvests;
+    if (saved.rogersPointsRedemptions) rogersPointsRedemptions = saved.rogersPointsRedemptions;
+    if (saved.creditCards && Array.isArray(saved.creditCards)) creditCards = saved.creditCards;
+    if (saved.ccActualSpend)   ccActualSpend  = saved.ccActualSpend;
+    budget.expenses.forEach(e => { if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0; });
+    budget.income.forEach(i =>   { if (incomeAmounts[i.id]  === undefined) incomeAmounts[i.id]  = i.amount || 0; });
+    // also persist locally as fallback
+    ['budget2026','budget-tracker','household-budget'].forEach(k => {
+      try { localStorage.setItem(k, JSON.stringify(saved)); } catch(e) {}
+    });
+    return true;
+  } catch(e) {
+    console.warn('Gist load failed:', e.message);
+    return false;
+  }
+}
 
-  const blob = new Blob([out], { type: 'text/html;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'Household_budget_2026.html';
-  a.click();
-  URL.revokeObjectURL(a.href);
+function showGistSetup() {
+  document.getElementById('gist-setup-modal').classList.add('open');
+}
+function closeGistSetup() {
+  document.getElementById('gist-setup-modal').classList.remove('open');
+}
+function saveGistConfig() {
+  const token = document.getElementById('gist-token-input').value.trim();
+  const id    = document.getElementById('gist-id-input').value.trim();
+  if (!token || !id) { alert('Please enter both the token and Gist ID.'); return; }
+  localStorage.setItem('gist_token', token);
+  localStorage.setItem('gist_id', id);
+  closeGistSetup();
+  updateSyncStatus('idle');
+  // immediately pull data from gist
+  setSyncStatus('syncing');
+  loadFromGist().then(ok => {
+    if (ok) {
+      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+      renderCreditCardsPage(); updateSummary(); renderCalendar();
+      setSyncStatus('ok', 'Loaded from Gist');
+    } else {
+      setSyncStatus('error', 'Could not load — check your token and ID');
+    }
+  });
+}
+
+function setSyncStatus(state, msg) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const icons = { idle: '☁️', syncing: '⏳', ok: '✓', error: '✗' };
+  const colors = { idle: 'var(--muted)', syncing: 'var(--muted)', ok: 'var(--income-green)', error: 'var(--expense-red)' };
+  el.textContent = (icons[state] || '') + ' ' + (msg || { idle: 'Gist sync ready', syncing: 'Syncing…', ok: 'Saved to Gist', error: 'Sync failed' }[state] || '');
+  el.style.color = colors[state] || 'var(--muted)';
+}
+function updateSyncStatus(state, msg) { setSyncStatus(state, msg); }
+
+async function handleSave() {
+  saveSettings();
+  const payload = buildSavePayload();
+  const payloadStr = JSON.stringify(payload);
+  // Always save locally as fallback
+  ['budget2026','budget-tracker','household-budget'].forEach(k => {
+    try { localStorage.setItem(k, payloadStr); } catch(e) {}
+  });
 
   const btn = document.getElementById('save-btn');
-  btn.classList.add('saved');
-  btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg> Saved`;
   const notif = document.getElementById('notif');
-  notif.classList.add('show');
-  setTimeout(() => {
-    notif.classList.remove('show');
-    btn.classList.remove('saved');
+
+  if (!gistConfigured()) {
+    // No gist set up — prompt user
+    const setup = confirm('Gist sync is not configured. Set it up now for cross-device saving?\n\nClick Cancel to skip (data saved locally only).');
+    if (setup) { showGistSetup(); return; }
+    // local-only feedback
+    btn.classList.add('saved');
+    btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg> Saved locally`;
+    setTimeout(() => {
+      btn.classList.remove('saved');
+      btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"/><path d="M11 1v4H5V1M5 9h6"/></svg> Save`;
+    }, 2000);
+    return;
+  }
+
+  // Push to Gist
+  btn.disabled = true;
+  btn.innerHTML = `⏳ Syncing…`;
+  setSyncStatus('syncing');
+  try {
+    await pushToGist();
+    btn.classList.add('saved');
+    btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg> Saved`;
+    notif.textContent = '☁️ Synced to Gist ✓';
+    notif.classList.add('show');
+    setSyncStatus('ok');
+    setTimeout(() => {
+      notif.classList.remove('show');
+      notif.textContent = 'Saved ✓';
+      btn.classList.remove('saved');
+      btn.disabled = false;
+      btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"/><path d="M11 1v4H5V1M5 9h6"/></svg> Save`;
+    }, 2500);
+  } catch(e) {
+    setSyncStatus('error', 'Sync failed: ' + e.message);
+    btn.disabled = false;
     btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"/><path d="M11 1v4H5V1M5 9h6"/></svg> Save`;
-  }, 2000);
+    alert('Gist sync failed: ' + e.message + '\n\nData was saved locally. Check your token and Gist ID in ☁️ Sync Settings.');
+  }
 }
 
 function saveState() { /* no-op: use Save button */ }
@@ -5983,7 +6076,7 @@ function confirmReset() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   loadState();
   loadSettings();
   updateMonthLabel();
@@ -6006,6 +6099,29 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }, 100);
+
+  // Populate sync setup fields if already configured
+  const t = localStorage.getItem('gist_token') || '';
+  const g = localStorage.getItem('gist_id') || '';
+  if (t) document.getElementById('gist-token-input').value = t;
+  if (g) document.getElementById('gist-id-input').value = g;
+
+  // Pull latest data from Gist on load
+  if (gistConfigured()) {
+    setSyncStatus('syncing');
+    const ok = await loadFromGist();
+    if (ok) {
+      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+      renderCreditCardsPage(); updateSummary(); renderCalendar();
+      setSyncStatus('ok', 'Loaded from Gist');
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    } else {
+      setSyncStatus('error', 'Could not load from Gist');
+      setTimeout(() => setSyncStatus('idle'), 4000);
+    }
+  } else {
+    setSyncStatus('idle', 'Gist not configured');
+  }
 });
 </script>
 
@@ -6560,5 +6676,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
 }());
 </script>
+
+<!-- GIST SYNC SETUP MODAL -->
+<div class="modal-overlay" id="gist-setup-modal" onclick="if(event.target===this)closeGistSetup()" style="z-index:1100">
+  <div class="modal" style="max-width:420px">
+    <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin-bottom:4px">☁️ Gist Sync Setup</h2>
+    <p style="font-size:0.8571em;color:var(--muted);margin-bottom:20px;line-height:1.5">Enter your GitHub credentials once per device. They are stored only in this browser and sent directly to GitHub — never to any other server.</p>
+    <div class="form-field" style="margin-bottom:14px">
+      <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">GitHub Personal Access Token</label>
+      <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
+      <div style="font-size:0.75em;color:var(--muted);margin-top:4px">Needs <strong>gist</strong> scope. Create at GitHub → Settings → Developer settings → Tokens (classic).</div>
+    </div>
+    <div class="form-field" style="margin-bottom:20px">
+      <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Gist ID</label>
+      <input type="text" id="gist-id-input" placeholder="4c090b1618a30987132c62d6bde48c6a" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
+      <div style="font-size:0.75em;color:var(--muted);margin-top:4px">The long ID from your Gist URL. File must be named <strong>budget-data.json</strong>.</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-primary" onclick="saveGistConfig()" style="flex:1">Connect</button>
+      <button class="btn-secondary" onclick="closeGistSetup()">Cancel</button>
+    </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
+      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','Gist not configured');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Disconnect Gist from this device</button>
+    </div>
+  </div>
+</div>
 
 </body></html>
