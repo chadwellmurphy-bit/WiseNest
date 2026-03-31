@@ -6072,13 +6072,7 @@ function applySettingsToDOM(rerender) {
     if (ol)  ol.classList.remove('open');
   } else {
     document.body.classList.remove('nav-slideover');
-    if (isMobile) {
-      // On mobile, start with nav closed so tapping main content works
-      if (nav) nav.classList.remove('open');
-      if (ol)  ol.classList.remove('open');
-    } else {
-      if (nav) nav.classList.add('open');
-    }
+    if (nav) nav.classList.add('open');
   }
   // Theme
   document.body.classList.toggle('theme-light', appSettings.theme === 'light');
