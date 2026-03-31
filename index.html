@@ -5814,9 +5814,9 @@ function applySettingsToDOM(rerender) {
   } else {
     document.body.classList.remove('nav-slideover');
     if (isMobile) {
-      // On mobile, start with nav closed so tapping main content works
-      if (nav) nav.classList.remove('open');
-      if (ol)  ol.classList.remove('open');
+      // On mobile, open nav by default so user sees it on first load
+      if (nav) nav.classList.add('open');
+      if (ol)  ol.classList.add('open');
     } else {
       if (nav) nav.classList.add('open');
     }
