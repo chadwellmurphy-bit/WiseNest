@@ -1749,6 +1749,19 @@
 <body class="density-compact">
 <div class="shell">
 
+<!-- ═══ LOGIN GATE ══════════════════════════════════════════ -->
+<div id="login-gate" style="
+  display:none; position:fixed; inset:0; z-index:2000;
+  background:var(--bg);
+  flex-direction:column; align-items:center; justify-content:center;
+  gap:24px; padding:32px;
+">
+  <div style="font-family:var(--font-serif);font-size:2.2em;letter-spacing:-.03em;color:var(--text)">Budget 2026</div>
+  <div style="font-family:var(--font-mono);font-size:0.85em;color:var(--muted);text-align:center;max-width:280px;line-height:1.6">Connect your GitHub Gist to access your budget data.</div>
+  <button onclick="showGistSetup()" style="background:var(--accent);color:#111;border:none;border-radius:12px;font-family:var(--font-sans);font-weight:600;font-size:1em;padding:14px 36px;cursor:pointer;transition:background .15s;" onmouseenter="this.style.background='#d8ff55'" onmouseleave="this.style.background='var(--accent)'">☁️ Log in</button>
+  <div id="login-gate-error" style="font-family:var(--font-mono);font-size:0.8em;color:var(--expense-red);display:none;text-align:center"></div>
+</div>
+
 <!-- ═══ LEFT NAV ═══════════════════════════════════════════ -->
 <nav class="left-nav open" id="left-nav">
   <div class="nav-brand" style="padding:12px 14px 10px;">
@@ -3160,6 +3173,16 @@ function showGistSetup() {
 function closeGistSetup() {
   document.getElementById('gist-setup-modal').classList.remove('open');
 }
+function showLoginGate(errorMsg) {
+  const gate = document.getElementById('login-gate');
+  if (gate) gate.style.display = 'flex';
+  const err = document.getElementById('login-gate-error');
+  if (err) { err.textContent = errorMsg || ''; err.style.display = errorMsg ? 'block' : 'none'; }
+}
+function hideLoginGate() {
+  const gate = document.getElementById('login-gate');
+  if (gate) gate.style.display = 'none';
+}
 function saveGistConfig() {
   const token = document.getElementById('gist-token-input').value.trim();
   const id    = document.getElementById('gist-id-input').value.trim();
@@ -3168,14 +3191,15 @@ function saveGistConfig() {
   localStorage.setItem('gist_id', id);
   closeGistSetup();
   updateSyncStatus('idle');
-  // immediately pull data from gist
   setSyncStatus('syncing');
   loadFromGist().then(ok => {
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
       renderCreditCardsPage(); updateSummary(); renderCalendar();
+      hideLoginGate();
       setSyncStatus('ok', '✓ Logged in');
     } else {
+      showLoginGate('Could not connect — check your token and Gist ID');
       setSyncStatus('error', 'Could not load — check your token and ID');
     }
   });
@@ -5816,7 +5840,7 @@ function applySettingsToDOM(rerender) {
   } else {
     document.body.classList.remove('nav-slideover');
     if (isMobile) {
-      // On mobile, open nav by default so user sees it on first load
+      // On mobile, open nav by default so user sees navigation on first load
       if (nav) nav.classList.add('open');
       if (ol)  ol.classList.add('open');
     } else {
@@ -5939,13 +5963,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
       renderCreditCardsPage(); updateSummary(); renderCalendar();
+      hideLoginGate();
       setSyncStatus('ok', '✓ Synced');
       setTimeout(() => setSyncStatus('idle'), 2500);
     } else {
+      showLoginGate('Could not sync — check your connection');
       setSyncStatus('error', 'Could not sync — check connection');
       setTimeout(() => setSyncStatus('idle'), 4000);
     }
   } else {
+    showLoginGate();
     setSyncStatus('idle', '☁️ Log in');
   }
 });
@@ -6622,7 +6649,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
-      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','☁️ Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
+      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();showLoginGate();setSyncStatus('idle','☁️ Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
     </div>
   </div>
 </div>
