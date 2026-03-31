@@ -3439,7 +3439,7 @@ function saveGistConfig() {
 function setSyncStatus(state, msg) {
   const el = document.getElementById('sync-status');
   if (!el) return;
-  const icons = { idle: '', syncing: '⏳', ok: '✓', error: '✗' };
+  const icons = { idle: '', syncing: '⏳', ok: '', error: '✗' };
   const colors = { idle: 'var(--text)', syncing: 'var(--text)', ok: 'var(--income-green)', error: 'var(--expense-red)' };
   const defaults = { idle: gistConfigured() ? '☁️ Synced' : '☁️ Log in', syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' };
   el.textContent = ((icons[state] ? icons[state] + ' ' : '') + (msg || defaults[state] || '')).trim();
