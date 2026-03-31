@@ -1375,6 +1375,7 @@
     background: rgba(0,0,0,.4); z-index: 49;
   }
   body.nav-slideover .nav-overlay.open { display: block; }
+  .nav-overlay.open { display: block; }
 
   /* ── LIGHT THEME ───────────────────────────────────────── */
   body.theme-light {
@@ -1804,7 +1805,7 @@
       <button class="save-btn" id="save-btn" onclick="handleSave()" style="flex:1;justify-content:center"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg> Save</button>
       <button id="sync-pull-btn" onclick="handlePull()" title="Pull latest data from Gist" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:10px;cursor:pointer;padding:0 12px;font-size:1.1em;transition:all .15s;flex-shrink:0" onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↻</button>
     </div>
-    <div id="sync-status" onclick="showGistSetup()" style="font-size:0.7143em;font-family:var(--font-mono);color:var(--muted);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
+    <div id="sync-status" onclick="showGistSetup()" style="font-size:0.8571em;font-family:var(--font-mono);color:var(--text);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
   </div>
 </nav>
 
@@ -3428,7 +3429,7 @@ function saveGistConfig() {
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
       renderCreditCardsPage(); updateSummary(); renderCalendar();
-      setSyncStatus('ok', 'Loaded from Gist');
+      setSyncStatus('ok', '✓ Logged in');
     } else {
       setSyncStatus('error', 'Could not load — check your token and ID');
     }
@@ -3439,10 +3440,10 @@ function setSyncStatus(state, msg) {
   const el = document.getElementById('sync-status');
   if (!el) return;
   const icons = { idle: '', syncing: '⏳', ok: '✓', error: '✗' };
-  const colors = { idle: 'var(--muted)', syncing: 'var(--muted)', ok: 'var(--income-green)', error: 'var(--expense-red)' };
+  const colors = { idle: 'var(--text)', syncing: 'var(--text)', ok: 'var(--income-green)', error: 'var(--expense-red)' };
   const defaults = { idle: gistConfigured() ? '☁️ Synced' : '☁️ Log in', syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' };
   el.textContent = ((icons[state] ? icons[state] + ' ' : '') + (msg || defaults[state] || '')).trim();
-  el.style.color = colors[state] || 'var(--muted)';
+  el.style.color = colors[state] || 'var(--text)';
 }
 function updateSyncStatus(state, msg) { setSyncStatus(state, msg); }
 
@@ -3456,7 +3457,7 @@ async function handlePull() {
   if (ok) {
     renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
     renderCreditCardsPage(); updateSummary(); renderCalendar();
-    setSyncStatus('ok', '✓ Pulled latest');
+    setSyncStatus('ok', '✓ Syncing...');
     setTimeout(() => setSyncStatus('idle'), 2500);
   } else {
     setSyncStatus('error', 'Could not pull — check connection');
@@ -6061,12 +6062,21 @@ function removeCard(idx) {
 function applySettingsToDOM(rerender) {
   // Panel mode
   const nav = document.getElementById('left-nav');
+  const ol  = document.getElementById('nav-overlay');
+  const isMobile = window.innerWidth <= 768;
   if (appSettings.panelMode === 'slideover') {
     document.body.classList.add('nav-slideover');
     if (nav) nav.classList.remove('open');
+    if (ol)  ol.classList.remove('open');
   } else {
     document.body.classList.remove('nav-slideover');
-    if (nav) nav.classList.add('open');
+    if (isMobile) {
+      // On mobile, start with nav closed so tapping main content works
+      if (nav) nav.classList.remove('open');
+      if (ol)  ol.classList.remove('open');
+    } else {
+      if (nav) nav.classList.add('open');
+    }
   }
   // Theme
   document.body.classList.toggle('theme-light', appSettings.theme === 'light');
@@ -6867,7 +6877,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
-      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
+      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','☁️ Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
     </div>
   </div>
 </div>
