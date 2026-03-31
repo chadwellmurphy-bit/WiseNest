@@ -1575,7 +1575,7 @@
     .left-nav .nav-icon         { width: 20px; height: 20px; }
 
     /* Top bar compact — fit all items */
-    .top-bar         { padding: 8px 10px; gap: 6px; }
+    .top-bar         { padding: 8px 10px; padding-top: calc(8px + env(safe-area-inset-top)); gap: 6px; }
     .top-bar-title   { font-size: 0.95em; }
     .gear-btn        { width: 32px; height: 32px; }
     .month-nav       { gap: 4px; }
@@ -1602,7 +1602,7 @@
     .summary-strip { grid-template-columns: 1fr; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .page          { padding: 14px; }
-    .top-bar       { padding: 6px 8px; }
+    .top-bar       { padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
     .top-bar-title { font-size: 0.85em; }
   }
 
@@ -1686,7 +1686,7 @@
     .left-nav .nav-badge { font-size: 0.8em; }
 
     /* Top bar compact */
-    .top-bar         { padding: 8px 10px; gap: 6px; }
+    .top-bar         { padding: 8px 10px; padding-top: calc(8px + env(safe-area-inset-top)); gap: 6px; }
     .top-bar-title   { font-size: 0.95em; }
     .gear-btn        { width: 32px; height: 32px; }
     .month-nav       { gap: 4px; }
@@ -1713,7 +1713,7 @@
     .summary-strip { grid-template-columns: 1fr; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .page          { padding: 14px; }
-    .top-bar       { padding: 6px 8px; }
+    .top-bar       { padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
     .top-bar-title { font-size: 0.85em; }
   }
 
