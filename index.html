@@ -2971,260 +2971,17 @@ const LOGOS = {
 // Budget data parsed from Numbers file
 // BUDGET_START
 const budget = {
-  "income": [
-    {
-      "id": "chad",
-      "name": "Chad Paycheck",
-      "amount": 4800,
-      "note": "bi-weekly net",
-      "freq": "biweekly",
-      "anchorDate": "2026-03-12",
-      "payDay": null,
-      "payDay2": null
-    },
-    {
-      "id": "karla",
-      "name": "Karla Paycheck",
-      "amount": 3200,
-      "note": "bi-weekly net",
-      "freq": "biweekly",
-      "anchorDate": "2026-03-19",
-      "payDay": null,
-      "payDay2": null
-    },
-    {
-      "id": "income_1774530150265",
-      "name": "CCB",
-      "note": "monthly",
-      "amount": 257,
-      "freq": "monthly",
-      "anchorDate": null,
-      "payDay": 20,
-      "payDay2": null
-    }
-  ],
-  "expenses": [
-    {
-      "id": "mortgage",
-      "name": "House (mortgage + tax)",
-      "amount": 2100,
-      "due": "21st",
-      "category": "Housing",
-      "source": "cibc"
-    },
-    {
-      "id": "mortprot",
-      "name": "Mortgage protection",
-      "amount": 85,
-      "due": "31st",
-      "category": "Insurance",
-      "source": "cibc"
-    },
-    {
-      "id": "houseins",
-      "name": "House insurance",
-      "amount": 180,
-      "due": "31st",
-      "category": "Insurance",
-      "source": "cibc"
-    },
-    {
-      "id": "carins",
-      "name": "Car insurance",
-      "amount": 210,
-      "due": "31st",
-      "category": "Insurance",
-      "source": "cibc"
-    },
-    {
-      "id": "mazda",
-      "name": "Mazda loan (3.45%)",
-      "amount": 495,
-      "due": "31st",
-      "category": "Debt",
-      "source": "cibc"
-    },
-    {
-      "id": "triangle",
-      "name": "Triangle card (0%)",
-      "amount": 300,
-      "due": "10th",
-      "category": "Debt",
-      "source": "eq"
-    },
-    {
-      "id": "cibc_loc",
-      "name": "CIBC Line of Credit (7.95%)",
-      "amount": 250,
-      "due": "",
-      "category": "Debt",
-      "source": "cibc"
-    },
-    {
-      "id": "tang_loc",
-      "name": "Tangerine Line of Credit",
-      "amount": 150,
-      "due": "21st",
-      "category": "Debt",
-      "source": "eq"
-    },
-    {
-      "id": "student",
-      "name": "Student loan (0%)",
-      "amount": 120,
-      "due": "31st",
-      "category": "Debt",
-      "source": "cibc"
-    },
-    {
-      "id": "rogers_epp",
-      "name": "Rogers EPP + interest (6.9%)",
-      "amount": 95,
-      "due": "14th",
-      "category": "Debt",
-      "source": "rogers"
-    },
-    {
-      "id": "rogers_hm",
-      "name": "Rogers home + Karla mobile",
-      "amount": 180,
-      "due": "14th",
-      "category": "Utilities",
-      "source": "rogers"
-    },
-    {
-      "id": "bell",
-      "name": "Bell mobility (Chad)",
-      "amount": 65,
-      "due": "20th",
-      "category": "Utilities",
-      "source": "rogers"
-    },
-    {
-      "id": "nfpower",
-      "name": "NF Power bill",
-      "amount": 140,
-      "due": "20th",
-      "category": "Utilities",
-      "source": "eq"
-    },
-    {
-      "id": "apple",
-      "name": "Apple",
-      "amount": 22,
-      "due": "14th",
-      "category": "Subscriptions",
-      "source": "rogers"
-    },
-    {
-      "id": "netflix",
-      "name": "Netflix",
-      "amount": 18,
-      "due": "14th",
-      "category": "Subscriptions",
-      "source": "rogers"
-    },
-    {
-      "id": "gym",
-      "name": "Planet Fitness",
-      "amount": 25,
-      "due": "17th",
-      "category": "Lifestyle",
-      "source": "eq"
-    },
-    {
-      "id": "piano",
-      "name": "Piano lessons",
-      "amount": 120,
-      "due": "14th",
-      "category": "Lifestyle",
-      "source": "rogers"
-    },
-    {
-      "id": "lunch",
-      "name": "School lunch",
-      "amount": 80,
-      "due": "14th",
-      "category": "Lifestyle",
-      "source": "rogers"
-    },
-    {
-      "id": "rrsp",
-      "name": "CIBC RRSP (30th)",
-      "amount": 0,
-      "due": "30th",
-      "category": "Savings",
-      "paused": true,
-      "source": "cibc"
-    },
-    {
-      "id": "resp",
-      "name": "CIBC RESP (30th)",
-      "amount": 100,
-      "due": "30th",
-      "category": "Savings",
-      "source": "cibc"
-    }
-  ]
+  "income": [],
+  "expenses": []
 };
 // BUDGET_END
 
 // DEBTS_START
-const debts = [
-  {
-    "name": "Tang. Line of Credit",
-    "balance": 6434,
-    "max": 7000,
-    "rate": "2.99%"
-  },
-  {
-    "name": "CIBC Line of Credit",
-    "balance": 0,
-    "max": 20000,
-    "rate": "7.95%"
-  },
-  {
-    "name": "Mazda loan",
-    "balance": 28458,
-    "max": 38749.4,
-    "rate": "3.45%"
-  },
-  {
-    "name": "Rogers EPP",
-    "balance": 2077,
-    "max": 4221.7,
-    "rate": "6.99%"
-  },
-  {
-    "name": "Student loan",
-    "balance": 8917,
-    "max": 11000,
-    "rate": "0%"
-  },
-  {
-    "name": "Triangle card",
-    "balance": 996,
-    "max": 18000,
-    "rate": "0%"
-  }
-];
+const debts = [];
 // DEBTS_END
 
 // INVESTMENTS_START
-const investments = [
-  {
-    "name": "RESP (Alannah)",
-    "value": 11800
-  },
-  {
-    "name": "RRSP (Chad)",
-    "value": 4600
-  },
-  {
-    "name": "Quest Trade",
-    "value": 1700
-  }
-];
+const investments = [];
 // INVESTMENTS_END
 
 // CATCOLORS_START
@@ -3242,12 +2999,12 @@ let categoryColors = {
 
 // ─── STATE ──────────────────────────────────────────────────────
 // AMOUNTS_START
-let expenseAmounts = {"mortgage":1798,"carins":336,"mazda":704,"mortprot":79,"houseins":127,"triangle":167,"cibc_loc":0,"tang_loc":147,"student":104,"rogers_epp":175,"rogers_hm":166,"bell":41,"nfpower":292,"apple":20,"netflix":9,"gym":17,"piano":115,"lunch":80,"rrsp":0,"resp":100};
-let incomeAmounts = {"chad":1900,"karla":1100,"income_1774530150265":257};
+let expenseAmounts = {};
+let incomeAmounts = {};
 // AMOUNTS_END
 
 // MONTHLY_EXPENSES_START
-let expenseHistory = {"carins":[{"yr":2025,"mo":7,"amount":119,"due":"19","source":"cibc","category":"Insurance"},{"yr":2026,"mo":0,"amount":119,"due":"19","source":"cibc","category":"Insurance"},{"yr":2026,"mo":2,"amount":336,"due":"31","source":"cibc","category":"Insurance"}],"houseins":[{"yr":2025,"mo":7,"amount":127,"due":"21","source":"cibc","category":"Insurance"},{"yr":2026,"mo":2,"amount":127,"due":"31","source":"cibc","category":"Insurance"}],"triangle":[{"yr":2026,"mo":2,"amount":167,"due":"10th","source":"eq","category":"Debt","manual":true}],"nfpower":[{"yr":2026,"mo":2,"amount":292,"due":"20th","source":"eq","category":"Utilities","manual":true}],"bell":[{"yr":2026,"mo":2,"amount":41,"due":"20th","source":"rogers","category":"Utilities","manual":true}],"lunch":[{"yr":2026,"mo":2,"amount":80,"due":"14th","source":"rogers","category":"Lifestyle","manual":true}]};
+let expenseHistory = {};
 // expenseHistory: { "carins": [{yr:2026,mo:0,amount:336},...], ... }
 // Entries sorted oldest→newest. A month's amount = newest entry whose yr/mo <= requested.
 // MONTHLY_EXPENSES_END
@@ -3257,27 +3014,27 @@ let monthOverrides = {};
 // OVERRIDES_END
 
 // ACTUALS_START
-let incomeActuals = {"2026-2-chad-1":2015,"2026-2-chad-0":1910,"2026-0-chad-0":1812,"2026-0-chad-1":1944,"2026-0-chad-2":1852,"2026-1-chad-0":1880,"2026-1-chad-1":1867};
+let incomeActuals = {};
 // ACTUALS_END
 
 // MONTHLY_DEBTS_START
-let monthlyDebts = {"2026-1":[{"name":"Tang. Line of Credit","balance":6581,"max":7000,"rate":"2.99%"},{"name":"CIBC Line of Credit","balance":0,"max":20000,"rate":"7.95%"},{"name":"Mazda loan","balance":29162,"max":38749.4,"rate":"3.45%"},{"name":"Rogers EPP","balance":2254,"max":4221.7,"rate":"6.99%"},{"name":"Student loan","balance":9021,"max":11000,"rate":"0%"},{"name":"Triangle card","balance":1163,"max":18000,"rate":"0%"}],"2026-2":[{"name":"Tang. Line of Credit","balance":6434,"max":7000,"rate":"2.99%"},{"name":"CIBC Line of Credit","balance":0,"max":20000,"rate":"7.95%"},{"name":"Mazda loan","balance":28458,"max":38749.4,"rate":"3.45%"},{"name":"Rogers EPP","balance":2077,"max":4221.7,"rate":"6.99%"},{"name":"Student loan","balance":8917,"max":11000,"rate":"0%"},{"name":"Triangle card","balance":996,"max":18000,"rate":"0%"}],"2026-0":[{"name":"Tang. Line of Credit","balance":6728,"max":7000,"rate":"2.99%"},{"name":"CIBC Line of Credit","balance":0,"max":20000,"rate":"7.95%"},{"name":"Mazda loan","balance":29866,"max":38749.4,"rate":"3.45%"},{"name":"Rogers EPP","balance":2431,"max":4221.7,"rate":"6.99%"},{"name":"Student loan","balance":9125,"max":11000,"rate":"0%"},{"name":"Triangle card","balance":1330,"max":18000,"rate":"0%"}],"2025-11":[{"name":"Tang. Line of Credit","balance":0,"max":7000,"rate":"2.99%"},{"name":"CIBC Line of Credit","balance":0,"max":20000,"rate":"7.95%"},{"name":"Mazda loan","balance":28458,"max":38749.4,"rate":"3.45%"},{"name":"Rogers EPP","balance":2077,"max":4221.7,"rate":"6.99%"},{"name":"Student loan","balance":8917,"max":11000,"rate":"0%"},{"name":"Triangle card","balance":996,"max":18000,"rate":"0%"}]};
+let monthlyDebts = {};
 // MONTHLY_DEBTS_END
 
 // MONTHLY_INVESTS_START
-let monthlyInvests = {"2026-2":[{"name":"RESP (Alannah)","value":11800},{"name":"RRSP (Chad)","value":4550},{"name":"Quest Trade","value":1675}],"2026-1":[{"name":"RESP (Alannah)","value":12000},{"name":"RRSP (Chad)","value":4600},{"name":"Quest Trade","value":1700}]};
+let monthlyInvests = {};
 // MONTHLY_INVESTS_END
 
 // ROGERS_POINTS_START
-let rogersPointsRedemptions = {"2026-1":122};
+let rogersPointsRedemptions = {};
 // ROGERS_POINTS_END
 
 // CREDIT_CARDS_START
-let creditCards = [{"id":"rogers","name":"Rogers Credit Card","expenseSource":"rogers","statementDayStart":15,"statementDayEnd":14}];
+let creditCards = [];
 // CREDIT_CARDS_END
 
 // CC_ACTUAL_START
-let ccActualSpend = {"rogers-2026-1":2408.55,"rogers-2026-0":1065.12};
+let ccActualSpend = {};
 // CC_ACTUAL_END
 
 function loadState() {
