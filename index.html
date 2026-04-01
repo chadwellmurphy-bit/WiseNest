@@ -858,6 +858,8 @@
     border-radius: 16px;
     width: 420px;
     max-width: 90vw;
+    max-height: 90vh;
+    overflow-y: auto;
     padding: 28px;
     transform: translateY(12px) scale(0.97);
     transition: transform 0.2s;
@@ -1038,10 +1040,11 @@
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     background: var(--surface2);
     transition: background .12s, transform .1s;
-    cursor: default;
+    cursor: pointer;
     min-height: 70px;
   }
-  .cal-cell.cal-empty { background: transparent; cursor: default; }
+  .cal-cell:not(.cal-has-pay):not(.cal-has-income):not(.cal-has-both):not(.cal-empty):hover { background: rgba(255,255,255,.07); transform: scale(1.02); }
+  .cal-cell.cal-empty { background: transparent; cursor: default; pointer-events: none; }
   .cal-cell.cal-today { outline: 2px solid var(--accent); }
   .cal-cell.cal-has-pay {
     background: rgba(255,91,122,.13);
@@ -2925,19 +2928,16 @@
       <input type="text" id="modal-name" placeholder="e.g. Side hustle, Rental income">
     </div>
     <div class="form-field">
-      <label>Monthly Amount (CAD)</label>
+      <label id="modal-amount-label">Per-payment Amount (CAD)</label>
       <input type="number" id="modal-amount" placeholder="0" min="0">
     </div>
     <div class="form-field">
       <label>Payment Frequency</label>
       <select id="modal-freq" onchange="toggleIncomeScheduleFields()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
         <option value="biweekly">Bi-weekly (26×/yr)</option>
-        <option value="semimonthly">Semi-monthly (24×/yr)</option>
         <option value="monthly">Monthly (12×/yr)</option>
         <option value="weekly">Weekly (52×/yr)</option>
-        <option value="bimonthly">Bi-monthly (6×/yr)</option>
-        <option value="quarterly">Quarterly (4×/yr)</option>
-        <option value="annual">Annual (1×/yr)</option>
+        <option value="onetime">One-time payment</option>
       </select>
     </div>
     <div class="form-field" id="modal-anchor-wrap" style="display: none;">
@@ -2951,6 +2951,18 @@
     <div class="form-field" id="modal-payday2-wrap" style="display:none">
       <label>Second Payment Day of Month</label>
       <input type="number" id="modal-payday2" min="1" max="31" placeholder="e.g. 30" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
+    </div>
+    <div class="form-field" id="modal-repeat-wrap" style="margin-bottom:16px;display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:0.9286em;font-weight:500">Repeat every month</div>
+          <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:2px">On means this income repeats from this month forward. Off means this month only.</div>
+        </div>
+        <label class="toggle" style="flex-shrink:0;margin-left:16px">
+          <input type="checkbox" id="modal-repeat" checked>
+          <div class="toggle-track"></div>
+        </label>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveIncomeModal()">Save</button>
@@ -3303,16 +3315,12 @@ function fmt(n) {
 // ─── FREQUENCY HELPERS ───────────────────────────────────────────
 const FREQ_LABELS = {
   biweekly:    'Bi-weekly',
-  semimonthly: 'Semi-monthly',
   monthly:     'Monthly',
   weekly:      'Weekly',
-  bimonthly:   'Bi-monthly',
-  quarterly:   'Quarterly',
-  annual:      'Annual',
+  onetime:     'One-time',
 };
 const FREQ_PER_YEAR = {
-  biweekly: 26, semimonthly: 24, monthly: 12,
-  weekly: 52, bimonthly: 6, quarterly: 4, annual: 1,
+  biweekly: 26, monthly: 12, weekly: 52, onetime: 0,
 };
 
 function monthlyIncome(item) {
@@ -3351,14 +3359,19 @@ function setActualPay(yr, mo, id, idx, amount) {
 // Monthly actual income for one item in a given month
 // Uses actual values where set, default otherwise
 function monthlyActualIncomeForMonth(item, yr, mo) {
+  // One-time items only count in their specific month
+  if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return 0;
+  // Repeating items added mid-year: skip months before they were created
+  if (item.startYr !== undefined) {
+    if (yr < item.startYr || (yr === item.startYr && mo < item.startMo)) return 0;
+  }
   const days = getIncomeDaysInMonth(item, yr, mo);
-  if (days.length === 0) return monthlyIncome(item); // fallback
+  if (days.length === 0) return item.oneTime ? 0 : monthlyIncome(item); // fallback only for repeating
   let total = 0;
   days.forEach((d, idx) => {
     const actual = getActualPay(yr, mo, item.id, idx);
     total += (actual !== null) ? actual : getIncomeAmount(item.id);
   });
-  // Scale to monthly: days.length payments actually happen this month
   return total;
 }
 
@@ -3549,6 +3562,31 @@ function renderIncome() {
 
   // DEFAULT section
   let defaultRows = budget.income.map(item => {
+    if (item.oneTime) {
+      // Only show one-time items in the month they belong to
+      if (item.oneTimeYr !== yr || item.oneTimeMo !== mo) return '';
+      // Show a read-only row with a "one-time" badge instead of an amount input
+      const targetLabel = MONTHS[item.oneTimeMo] + ' ' + item.oneTimeYr;
+      const actual = getActualPay(item.oneTimeYr, item.oneTimeMo, item.id, 0);
+      const dispAmt = actual !== null ? actual : 0;      return `
+      <div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">
+        <div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">
+          <span>${item.name}</span>
+          <span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">One-time &middot; ${targetLabel}</span>
+        </div>
+        <div class="item-actions">
+          <button class="icon-btn" onclick="editIncome('${item.id}')" title="Edit">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
+          </button>
+          <button class="icon-btn delete" onclick="confirmDeleteIncome('${item.id}')" title="Delete">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
+          </button>
+        </div>
+        <div style="font-family:var(--font-serif);font-size:1.15em;letter-spacing:-.02em;color:var(--income-green);min-width:76px;text-align:right">${fmt(dispAmt)}</div>
+      </div>`;
+    }
+    // Repeating items: hide in months before they were created
+    if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return '';
     const perPay = getIncomeAmount(item.id);
     const monthly = monthlyIncome(item);
     const freq = FREQ_LABELS[item.freq] || 'Monthly';
@@ -3578,6 +3616,10 @@ function renderIncome() {
   let actualRows = '';
   let hasActualData = false;
   budget.income.forEach(item => {
+    // One-time items only appear in their target month
+    if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
+    // Repeating items: skip months before they were created
+    if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
     const days = getIncomeDaysInMonth(item, yr, mo);
     if (days.length === 0) return;
     days.forEach((day, idx) => {
@@ -3711,7 +3753,11 @@ function renderExpenses() {
   </div>`;
 
   body.innerHTML = header + rows.map(item => {
-    const amt      = getExpenseAmount(item.id);
+    // Skip items that haven't started yet for the viewed month
+    if (item.startYr !== undefined) {
+      if (calYear < item.startYr || (calYear === item.startYr && calMonth < item.startMo)) return '';
+    }
+    const amt      = getExpenseAmountForMonth(item.id, calYear, calMonth);
     const due      = getExpenseDueForMonth(item.id, calYear, calMonth);
     const source   = getExpenseSourceForMonth(item.id, calYear, calMonth);
     const category = getExpenseCategoryForMonth(item.id, calYear, calMonth);
@@ -4051,6 +4097,12 @@ function openIncomeModal() {
   document.getElementById('modal-name').value = '';
   document.getElementById('modal-amount').value = '';
   document.getElementById('modal-freq').value = 'biweekly';
+  document.getElementById('modal-anchor').value = '';
+  document.getElementById('modal-payday').value = '';
+  document.getElementById('modal-payday2').value = '';
+  document.getElementById('modal-repeat-wrap').style.display = '';
+  document.getElementById('modal-repeat').checked = true;
+  toggleIncomeScheduleFields();
   document.getElementById('income-modal').classList.add('open');
   setTimeout(() => document.getElementById('modal-name').focus(), 150);
 }
@@ -4081,17 +4133,32 @@ function getIncomeDaysInMonth(item, yr, mo) {
 function closeIncomeModal(e) {
   if (e && e.target !== document.getElementById('income-modal')) return;
   document.getElementById('income-modal').classList.remove('open');
+  window._calReturnDay = null;
 }
 
 function toggleIncomeScheduleFields() {
   const freq = document.getElementById('modal-freq').value;
   const cyclic = ['biweekly','weekly'];
-  const fixedDouble = ['semimonthly'];
-  const fixedSingle = ['monthly','bimonthly','quarterly','annual'];
+  const fixedSingle = ['monthly'];
+  const isOnetime = freq === 'onetime';
+
   document.getElementById('modal-anchor-wrap').style.display  = cyclic.includes(freq) ? '' : 'none';
-  document.getElementById('modal-payday-wrap').style.display  = (fixedSingle.includes(freq)||fixedDouble.includes(freq)) ? '' : 'none';
-  document.getElementById('modal-payday2-wrap').style.display = fixedDouble.includes(freq) ? '' : 'none';
-  document.getElementById('modal-payday-label').textContent   = fixedDouble.includes(freq) ? 'First Payment Day of Month' : 'Payment Day of Month';
+  document.getElementById('modal-payday-wrap').style.display  = (fixedSingle.includes(freq)||isOnetime) ? '' : 'none';
+  document.getElementById('modal-payday2-wrap').style.display = 'none';
+  document.getElementById('modal-payday-label').textContent   = 'Payment Day of Month';
+  document.getElementById('modal-amount-label').textContent   = isOnetime ? 'Payment Amount (CAD)' : 'Per-payment Amount (CAD)';
+
+  // One-time: force repeat toggle off and lock it
+  const repeatToggle = document.getElementById('modal-repeat');
+  const repeatWrap   = document.getElementById('modal-repeat-wrap');
+  if (isOnetime) {
+    repeatToggle.checked  = false;
+    repeatToggle.disabled = true;
+    repeatWrap.style.opacity = '0.4';
+  } else {
+    repeatToggle.disabled = false;
+    repeatWrap.style.opacity = '';
+  }
 }
 
 function saveIncomeModal() {
@@ -4102,6 +4169,9 @@ function saveIncomeModal() {
   const anchorDate = document.getElementById('modal-anchor').value || null;
   const payDay = parseInt(document.getElementById('modal-payday').value) || null;
   const payDay2 = parseInt(document.getElementById('modal-payday2').value) || null;
+
+  const repeat = document.getElementById('modal-repeat').checked && freq !== 'onetime';
+
   pushUndo();
 
   if (modalEditId) {
@@ -4110,8 +4180,21 @@ function saveIncomeModal() {
     incomeAmounts[modalEditId] = amount;
   } else {
     const id = 'income_' + Date.now();
-    budget.income.push({ id, name, freq, amount, anchorDate, payDay, payDay2 });
-    incomeAmounts[id] = amount;
+    if (repeat) {
+      // Repeating from current month forward: record start month so past months are skipped.
+      budget.income.push({ id, name, freq, amount: 0, anchorDate, payDay, payDay2, startYr: calYear, startMo: calMonth });
+      incomeAmounts[id] = amount;
+    } else {
+      // One-time: create as monthly on the chosen day, base amount 0,
+      // then stamp the real amount via incomeActuals for just this month.
+      // oneTime:true flag tells renderIncome/totals to skip other months.
+      const day = window._calReturnDay ? window._calReturnDay.day : (payDay || 1);
+      const yr  = window._calReturnDay ? window._calReturnDay.yr  : calYear;
+      const mo  = window._calReturnDay ? window._calReturnDay.mo  : calMonth;
+      budget.income.push({ id, name, freq: 'monthly', amount: 0, anchorDate: null, payDay: day, payDay2: null, oneTime: true, oneTimeYr: yr, oneTimeMo: mo });
+      incomeAmounts[id] = 0;
+      setActualPay(yr, mo, id, 0, amount);
+    }
   }
 
   document.getElementById('income-modal').classList.remove('open');
@@ -4119,6 +4202,12 @@ function saveIncomeModal() {
   renderCalendar();
   updateSummary();
   reopenSection('income-body');
+  if (window._calReturnDay) {
+    const { yr, mo, day } = window._calReturnDay;
+    window._calReturnDay = null;
+    calYear = yr; calMonth = mo; calDrillDay = day;
+    renderCalendar();
+  }
 }
 
 // Close modal on Escape
@@ -4136,7 +4225,7 @@ document.addEventListener('keydown', e => {
     ['income-modal','expense-modal','debt-modal','invest-modal','cat-modal','pay-edit-overlay','add-card-modal'].forEach(id => {
       document.getElementById(id).classList.remove('open');
     });
-
+    window._calReturnDay = null;
   }
   if (e.key === 'Enter' && document.getElementById('income-modal').classList.contains('open'))   saveIncomeModal();
   if (e.key === 'Enter' && document.getElementById('expense-modal').classList.contains('open'))  saveExpenseModal();
@@ -4169,6 +4258,8 @@ function addExpense() {
   document.getElementById('exp-modal-cat').value = 'Lifestyle';
   setSelectedSource(null);
   document.getElementById('exp-modal-manual').checked = false;
+  document.getElementById('exp-modal-repeat-wrap').style.display = '';
+  document.getElementById('exp-modal-repeat').checked = true;
   document.getElementById('expense-modal').classList.add('open');
   setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
 }
@@ -4261,26 +4352,53 @@ function saveExpenseModal() {
   const source = sourceEl ? (sourceEl.dataset.src || null) : null;
   const manual = document.getElementById('exp-modal-manual').checked;
   if (!name) { document.getElementById('exp-modal-name').focus(); return; }
+
+  const repeat = document.getElementById('exp-modal-repeat').checked;
+
   pushUndo();
 
   if (expenseEditId) {
     setExpenseFieldsFromMonth(expenseEditId, { amount, due, category, source, manual }, calYear, calMonth);
   } else {
     const id = 'exp_' + Date.now();
-    budget.expenses.push({ id, name, amount, due, category, source });
-    expenseAmounts[id] = amount;
-    setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, calYear, calMonth);
+    if (repeat) {
+      // Repeating from current month forward: base is 0/empty so past months
+      // see nothing; the real values live in the history entry for this month.
+      budget.expenses.push({ id, name, amount: 0, due: '', category, source, startYr: calYear, startMo: calMonth });
+      expenseAmounts[id] = 0;
+      setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, calYear, calMonth);
+    } else {
+      // One-time: push with base amount 0 / no due, stamp the real values for
+      // the target month, then write a reset entry for the NEXT month so the
+      // history entry doesn't bleed forward via _historyEntryFor.
+      budget.expenses.push({ id, name, amount: 0, due: '', category, source });
+      expenseAmounts[id] = 0;
+      const tgtYr = window._calReturnDay ? window._calReturnDay.yr : calYear;
+      const tgtMo = window._calReturnDay ? window._calReturnDay.mo : calMonth;
+      setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, tgtYr, tgtMo);
+      // Reset entry for the following month
+      const nextMo = tgtMo === 11 ? 0  : tgtMo + 1;
+      const nextYr = tgtMo === 11 ? tgtYr + 1 : tgtYr;
+      setExpenseFieldsFromMonth(id, { amount: 0, due: '', category, source, manual: false }, nextYr, nextMo);
+    }
   }
 
   document.getElementById('expense-modal').classList.remove('open');
   renderExpenses();
   updateSummary();
   reopenSection('expense-body');
+  if (window._calReturnDay) {
+    const { yr, mo, day } = window._calReturnDay;
+    window._calReturnDay = null;
+    calYear = yr; calMonth = mo; calDrillDay = day;
+    renderCalendar();
+  }
 }
 
 function closeExpenseModal(e) {
   if (e && e.target !== document.getElementById('expense-modal')) return;
   document.getElementById('expense-modal').classList.remove('open');
+  window._calReturnDay = null;
 }
 
 
@@ -4581,6 +4699,7 @@ function buildPaymentMap(yr, mo) {
   const key = calMonthKey(yr, mo);
   const overrides = monthOverrides[key] || {};
   budget.expenses.forEach(item => {
+    if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
     const amt = getExpenseAmountForMonth(item.id, yr, mo);
     if (amt === 0) return;
     const due      = getExpenseDueForMonth(item.id, yr, mo);
@@ -4597,13 +4716,18 @@ function buildPaymentMap(yr, mo) {
     });
   });
   budget.income.forEach(item => {
+    // One-time items only appear in their target month
+    if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
+    // Repeating items: skip months before they were created
+    if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
     const defaultAmt = getIncomeAmount(item.id);
-    if (!defaultAmt) return;
     const days = getIncomeDaysInMonth(item, yr, mo);
-    days.forEach((d, idx) => {
-      if (!map[d]) map[d] = [];
+    const effectiveDays = days.length > 0 ? days : [dim]; // fallback to end of month if no days configured
+    effectiveDays.forEach((d, idx) => {
       const actual = getActualPay(yr, mo, item.id, idx);
       const amt = (actual !== null) ? actual : defaultAmt;
+      if (!amt) return; // skip if both default and actual are 0/null
+      if (!map[d]) map[d] = [];
       const isEdited = actual !== null;
       map[d].push({ id:item.id, name:item.name, amount:amt, defaultAmt, source:null, category:'Income', overridden:isEdited, type:'income', payIdx:idx });
     });
@@ -4683,15 +4807,19 @@ function buildDayDetailHTML(yr, mo, day, showBack) {
       const defaultNote = (isIncome && x.overridden) ? '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono)">default: '+fmtMoney(x.defaultAmt)+'</div>' : '';
       const editBtn = isIncome
         ? '<button data-yr="'+yr+'" data-mo="'+mo+'" data-id="'+x.id+'" data-idx="'+x.payIdx+'" data-amt="'+x.amount+'" onclick="openEditPay(+this.dataset.yr,+this.dataset.mo,this.dataset.id,+this.dataset.idx,+this.dataset.amt)" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 8px;font-size:0.7143em;cursor:pointer;white-space:nowrap">✏ Edit</button>'
-        : '';
+        : '<button data-id="'+x.id+'" onclick="calEditExpense(this.dataset.id)" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 8px;font-size:0.7143em;cursor:pointer;white-space:nowrap">✏ Edit</button>';
       out += '<div class="cal-day-row">' + dot + logo
         + '<div style="flex:1"><div class="cal-day-name">' + x.name + (isIncome ? ' <span style="font-size:0.7143em;color:var(--income-green)">INCOME</span>' : '') + editedBadge + manualBadge + '</div>' + defaultNote + '</div>'
-        + (isIncome ? editBtn : '<div class="cal-day-amt" style="">' + fmtMoney(x.amount) + '</div>')
-        + (isIncome ? '<div class="cal-day-amt" style="color:var(--income-green)">' + fmtMoney(x.amount) + '</div>' : '')
+        + editBtn
+        + '<div class="cal-day-amt" style="color:'+(isIncome?'var(--income-green)':'')+'">'+fmtMoney(x.amount)+'</div>'
         + '</div>';
     });
     if (expOnly.length > 0) out += '<div class="cal-day-total-strip"><div class="cal-day-total-label">Total due</div><div class="cal-day-total-val">'+fmtMoney(total)+'</div></div>';
   }
+  out += '<div style="display:flex;gap:8px;margin-top:14px;">'
+    + '<button onclick="calAddExpense('+yr+','+mo+','+day+')" style="flex:1;background:rgba(255,91,122,.13);border:1px solid rgba(255,91,122,.3);color:var(--expense-red);border-radius:8px;padding:8px 10px;font-size:0.8571em;cursor:pointer;font-family:var(--font-sans)">+ Add Expense</button>'
+    + '<button onclick="calAddIncome('+yr+','+mo+','+day+')" style="flex:1;background:rgba(62,255,163,.10);border:1px solid rgba(62,255,163,.25);color:var(--income-green);border-radius:8px;padding:8px 10px;font-size:0.8571em;cursor:pointer;font-family:var(--font-sans)">+ Add Income</button>'
+    + '</div>';
   out += '</div>';
   return out;
 }
@@ -4699,6 +4827,35 @@ function buildDayDetailHTML(yr, mo, day, showBack) {
 function calDrillBack() {
   calDrillDay = null;
   renderCalendar();
+}
+
+// Called from day-detail "Add Expense" button — opens expense modal pre-filled with the day
+function calAddExpense(yr, mo, day) {
+  window._calReturnDay = { yr, mo, day };
+  addExpense();
+  setTimeout(() => {
+    document.getElementById('exp-modal-due').value = day;
+  }, 60);
+}
+
+// Called from day-detail "Add Income" button — opens income modal pre-filled with the day
+function calAddIncome(yr, mo, day) {
+  window._calReturnDay = { yr, mo, day };
+  openIncomeModal();
+  setTimeout(() => {
+    document.getElementById('modal-freq').value = 'monthly';
+    toggleIncomeScheduleFields();
+    document.getElementById('modal-payday').value = day;
+  }, 60);
+}
+
+// Called from day-detail ✏ Edit on an expense row
+function calEditExpense(id) {
+  const item = budget.expenses.find(e => e.id === id);
+  if (!item) return;
+  // store return context so save comes back to this day
+  window._calReturnDay = { yr: calYear, mo: calMonth, day: calDrillDay };
+  editExpense(id);
 }
 
 function openCalDetail(day) {
@@ -4775,7 +4932,8 @@ function renderMonthView(body) {
     else if (hasIncome) cellClass += ' cal-has-income';
 
     out += '<div class="'+cellClass+'" style="position:relative"'
-      + (hasPay ? ' data-calday="'+d+'" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()" onclick="openCalDetail('+d+')"' : '')
+      + ' onclick="openCalDetail('+d+')"'
+      + (hasPay ? ' data-calday="'+d+'" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()"' : '')
       + '>'
       + '<div class="cal-day">'+d+'</div>'
       + (hasExpense ? '<div class="cal-entry-expense">'+fmtMoney(expenseTotal)+'</div>' : '')
@@ -4820,7 +4978,8 @@ function renderWeekView(body) {
     else if (hasIncome) colClass += ' cal-has-income';
 
     out += '<div class="'+colClass+'"'
-      + (hasPay ? ' data-wckey="w'+dy+'_'+mo+'_'+yr+'" onmouseenter="showCalTipW(event)" onmouseleave="hideCalTip()" onclick="calSetDay('+yr+','+mo+','+dy+')"' : '')
+      + ' onclick="calSetDay('+yr+','+mo+','+dy+')"'
+      + (hasPay ? ' data-wckey="w'+dy+'_'+mo+'_'+yr+'" onmouseenter="showCalTipW(event)" onmouseleave="hideCalTip()"' : '')
       + '>'
       + '<div class="cal-week-dow">'+DAY_NAMES_SHORT[i]+'</div>'
       + '<div class="cal-week-day">'+dy+'</div>'
@@ -6120,6 +6279,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         </label>
       </div>
     </div>
+<div class="form-field" id="exp-modal-repeat-wrap" style="margin-bottom:16px;display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:0.9286em;font-weight:500">Repeat every month</div>
+          <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:2px">On means this expense repeats from this month forward. Off means this month only.</div>
+        </div>
+        <label class="toggle" style="flex-shrink:0;margin-left:16px">
+          <input type="checkbox" id="exp-modal-repeat" checked>
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+    </div>
 <div class="modal-actions">
       <button class="btn-primary" onclick="saveExpenseModal()">Save</button>
       <button class="btn-secondary" onclick="closeExpenseModal()">Cancel</button>
@@ -6614,17 +6785,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 <!-- GIST SYNC SETUP MODAL -->
 <div class="modal-overlay" id="gist-setup-modal" onclick="if(event.target===this)closeGistSetup()" style="z-index:1100">
   <div class="modal" style="max-width:420px">
-    <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin-bottom:4px">☁️ Gist Sync Setup</h2>
-    <p style="font-size:0.8571em;color:var(--muted);margin-bottom:20px;line-height:1.5">Enter your GitHub credentials once per device. They are stored only in this browser and sent directly to GitHub — never to any other server.</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">☁️ Log in to Sync</h2>
+      <a href="#" onclick="event.preventDefault();document.getElementById('gist-help-modal').classList.add('open')" style="font-size:0.8em;color:var(--accent);text-decoration:none">Help ?</a>
+    </div>
     <div class="form-field" style="margin-bottom:14px">
-      <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">GitHub Personal Access Token</label>
+      <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Access Token</label>
       <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
-      <div style="font-size:0.75em;color:var(--muted);margin-top:4px">Needs <strong>gist</strong> scope. Create at GitHub → Settings → Developer settings → Tokens (classic).</div>
     </div>
     <div class="form-field" style="margin-bottom:20px">
       <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Gist ID</label>
       <input type="text" id="gist-id-input" placeholder="4c090b1618a30987132c62d6bde48c6a" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
-      <div style="font-size:0.75em;color:var(--muted);margin-top:4px">The long ID from your Gist URL. File must be named <strong>budget-data.json</strong>.</div>
     </div>
     <div style="display:flex;gap:10px">
       <button class="btn-primary" onclick="saveGistConfig()" style="flex:1">Connect</button>
@@ -6633,6 +6804,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
       <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','☁️ Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="gist-help-modal" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:1200">
+  <div class="modal" style="max-width:400px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;margin:0">Help</h2>
+      <button onclick="document.getElementById('gist-help-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.4em;line-height:1;padding:0">×</button>
+    </div>
+    <div style="font-size:0.875em;color:var(--muted);line-height:1.7">
+      <p style="margin:0 0 12px"><strong style="color:var(--text)">Access Token</strong><br>
+      Create one at GitHub → Settings → Developer settings → Tokens (classic). It needs the <strong>gist</strong> scope. Your credentials are stored only in this browser and sent directly to GitHub — never to any other server.</p>
+      <p style="margin:0"><strong style="color:var(--text)">Gist ID</strong><br>
+      The long ID found in your Gist's URL. The data file inside the Gist must be named <strong>budget-data.json</strong>.</p>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn-primary" onclick="document.getElementById('gist-help-modal').classList.remove('open')" style="width:100%">Got it</button>
     </div>
   </div>
 </div>
