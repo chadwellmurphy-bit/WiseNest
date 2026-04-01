@@ -2688,9 +2688,6 @@
             <button class="icon-btn" onclick="editDebt(0)" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
             </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(0)" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"></path></svg>
-            </button>
           </div>
         </div>
       </div>
@@ -2708,9 +2705,6 @@
           <div class="item-actions" style="opacity:1;margin-left:4px">
             <button class="icon-btn" onclick="editDebt(1)" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
-            </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(1)" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"></path></svg>
             </button>
           </div>
         </div>
@@ -2730,9 +2724,6 @@
             <button class="icon-btn" onclick="editDebt(2)" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
             </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(2)" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"></path></svg>
-            </button>
           </div>
         </div>
       </div>
@@ -2750,9 +2741,6 @@
           <div class="item-actions" style="opacity:1;margin-left:4px">
             <button class="icon-btn" onclick="editDebt(3)" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
-            </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(3)" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"></path></svg>
             </button>
           </div>
         </div>
@@ -2772,9 +2760,6 @@
             <button class="icon-btn" onclick="editDebt(4)" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
             </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(4)" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"></path></svg>
-            </button>
           </div>
         </div>
       </div>
@@ -2792,9 +2777,6 @@
           <div class="item-actions" style="opacity:1;margin-left:4px">
             <button class="icon-btn" onclick="editDebt(5)" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
-            </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(5)" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"></path></svg>
             </button>
           </div>
         </div>
@@ -3527,7 +3509,78 @@ function setExpenseAmountFromMonth(id, amount, fromYr, fromMo) {
 }
 
 function getDebtsForMonth(yr, mo) {
-  return monthlyDebts[monthKey(yr, mo)] || debts;
+  const snapshot = monthlyDebts[monthKey(yr, mo)];
+  if (snapshot) return snapshot;
+  // No snapshot: project balances from the most recent past snapshot by applying payments
+  return debts.map((baseDebt, i) => {
+    const projected = projectDebtBalance(i, yr, mo);
+    if (projected === null) return baseDebt;
+    return { ...baseDebt, balance: projected };
+  });
+}
+
+// Walk backwards to find the most recent snapshot with a known balance for debt[i],
+// then step forward month-by-month deducting payments to project the balance.
+function projectDebtBalance(i, targetYr, targetMo) {
+  const baseDebt = debts[i];
+  if (!baseDebt) return null;
+  const keys = Object.keys(monthlyDebts).sort();
+  const targetKey = monthKey(targetYr, targetMo);
+
+  // Find the latest snapshot at or before target month
+  let startKey = null, startYr, startMo;
+  for (const k of keys) {
+    if (k <= targetKey && monthlyDebts[k][i] !== undefined) {
+      startKey = k;
+      [startYr, startMo] = k.split('-').map(Number);
+    }
+  }
+  if (startKey === null) return null;
+  if (startKey === targetKey) {
+    // Return the effective balance for this exact snapshot
+    const snap = monthlyDebts[startKey][i];
+    if (snap.paymentOverride !== undefined) {
+      const prevMo2 = startMo === 0 ? 11 : startMo - 1;
+      const prevYr2 = startMo === 0 ? startYr - 1 : startYr;
+      const prevSnap2 = monthlyDebts[monthKey(prevYr2, prevMo2)];
+      const prevBal2 = prevSnap2 && prevSnap2[i] !== undefined ? prevSnap2[i].balance : null;
+      return prevBal2 !== null ? Math.max(0, prevBal2 - snap.paymentOverride) : snap.balance;
+    }
+    return snap.balance;
+  }
+
+  // Compute effective starting balance for the anchor snapshot
+  const anchorSnap = monthlyDebts[startKey][i];
+  let bal;
+  if (anchorSnap.paymentOverride !== undefined) {
+    const prevMo3 = startMo === 0 ? 11 : startMo - 1;
+    const prevYr3 = startMo === 0 ? startYr - 1 : startYr;
+    const prevSnap3 = monthlyDebts[monthKey(prevYr3, prevMo3)];
+    const prevBal3 = prevSnap3 && prevSnap3[i] !== undefined ? prevSnap3[i].balance : null;
+    bal = prevBal3 !== null ? Math.max(0, prevBal3 - anchorSnap.paymentOverride) : anchorSnap.balance;
+  } else {
+    bal = anchorSnap.balance;
+  }
+  let currentAnchorPayment = anchorSnap.payment || 0;
+
+  let y = startYr, m = startMo;
+  while (monthKey(y, m) < targetKey) {
+    m++; if (m > 11) { m = 0; y++; }
+    const k = monthKey(y, m);
+    if (monthlyDebts[k] && monthlyDebts[k][i] !== undefined) {
+      const snap = monthlyDebts[k][i];
+      // Re-anchor on this snapshot's effective balance
+      if (snap.paymentOverride !== undefined) {
+        bal = Math.max(0, bal - snap.paymentOverride);
+      } else {
+        bal = snap.balance;
+      }
+      currentAnchorPayment = snap.payment || 0;
+    } else {
+      bal = Math.max(0, bal - currentAnchorPayment);
+    }
+  }
+  return bal;
 }
 
 function getInvestsForMonth(yr, mo) {
@@ -3827,15 +3880,27 @@ function renderDebts() {
   </div>`;
 
   body.innerHTML = header + monthData.map((d, i) => {
-    // Progress bar uses the base debt max for consistent context
-    const baseMax = (debts[i] || d).max || d.max;
-    const pct = baseMax > 0 ? Math.min(100, Math.round((d.balance / baseMax) * 100)) : 0;
+    const baseDebt = debts[i] || d;
     const prevBalance = prevMonthData[i] ? prevMonthData[i].balance : null;
-    const diff = prevBalance !== null ? d.balance - prevBalance : 0;
+
+    // If this month has a payment override, derive the effective balance from prev - override
+    // rather than the raw stored balance, so the payment actually shows up in the diff
+    const effectivePayment = d.paymentOverride !== undefined ? d.paymentOverride : (baseDebt.payment || 0);
+    const displayBalance = (d.paymentOverride !== undefined && prevBalance !== null)
+      ? Math.max(0, prevBalance - d.paymentOverride)
+      : d.balance;
+
+    // Progress bar uses the base debt max for consistent context
+    const baseMax = baseDebt.max || d.max;
+    const pct = baseMax > 0 ? Math.min(100, Math.round((displayBalance / baseMax) * 100)) : 0;
+    const diff = prevBalance !== null ? displayBalance - prevBalance : 0;
     // Debt: down is good (green ▼), up is bad (red ▲)
     const diffStr = prevBalance !== null && diff !== 0
       ? (diff < 0 ? ' <span style="font-size:0.7143em;color:var(--income-green)">▼ ' + fmt(Math.abs(diff)) + '</span>'
                   : ' <span style="font-size:0.7143em;color:var(--expense-red)">▲ ' + fmt(diff) + '</span>')
+      : '';
+    const paymentStr = effectivePayment > 0
+      ? `<span style="font-size:0.7143em;color:var(--muted);margin-left:6px">−${fmt(effectivePayment)}/mo</span>`
       : '';
     return `
     <div class="debt-item">
@@ -3843,13 +3908,10 @@ function renderDebts() {
         <div class="debt-name">${d.name}</div>
         <div class="debt-meta">
           ${d.rate ? '<span class="debt-rate">'+d.rate+'</span>' : ''}
-          <span class="debt-balance">${fmt(d.balance)}${diffStr}</span>
+          <span class="debt-balance">${fmt(displayBalance)}${diffStr}${paymentStr}</span>
           <div class="item-actions" style="opacity:1;margin-left:4px">
             <button class="icon-btn" onclick="editDebt(${i})" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
-            </button>
-            <button class="icon-btn delete" onclick="confirmDeleteDebt(${i})" title="Delete">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
             </button>
           </div>
         </div>
@@ -4409,11 +4471,21 @@ function editDebt(i) {
   debtEditIdx = i;
   const monthData = getDebtsForMonth(calYear, calMonth);
   const d = monthData[i] || debts[i];
-  document.getElementById('debt-modal-title').textContent = 'Edit Debt — ' + MONTHS[calMonth] + ' ' + calYear;
+  const baseDebt = debts[i] || d;
+  const monthLabel = MONTHS[calMonth] + ' ' + calYear;
+  document.getElementById('debt-modal-title').textContent = 'Edit Debt — ' + monthLabel;
   document.getElementById('debt-modal-name').value = d.name;
   document.getElementById('debt-modal-balance').value = d.balance;
   document.getElementById('debt-modal-max').value = d.max;
   document.getElementById('debt-modal-rate').value = d.rate;
+  // Recurring payment comes from the base debt
+  document.getElementById('debt-modal-payment').value = baseDebt.payment || '';
+  // This-month override: only populated if the snapshot has a different payment than the base
+  const hasMonthOverride = d.paymentOverride !== undefined;
+  document.getElementById('debt-modal-payment-thismonth').value = hasMonthOverride ? d.paymentOverride : '';
+  document.getElementById('debt-modal-thismonth-label').textContent = monthLabel;
+  document.getElementById('debt-modal-thismonth-wrap').style.display = '';
+  document.getElementById('debt-modal-delete-btn').style.display = '';
   document.getElementById('debt-modal').classList.add('open');
   setTimeout(() => document.getElementById('debt-modal-name').focus(), 150);
 }
@@ -4425,8 +4497,17 @@ function addDebt() {
   document.getElementById('debt-modal-balance').value = '';
   document.getElementById('debt-modal-max').value = '';
   document.getElementById('debt-modal-rate').value = '';
+  document.getElementById('debt-modal-payment').value = '';
+  document.getElementById('debt-modal-payment-thismonth').value = '';
+  document.getElementById('debt-modal-thismonth-wrap').style.display = 'none';
+  document.getElementById('debt-modal-delete-btn').style.display = 'none';
   document.getElementById('debt-modal').classList.add('open');
   setTimeout(() => document.getElementById('debt-modal-name').focus(), 150);
+}
+
+function debtModalDelete() {
+  document.getElementById('debt-modal').classList.remove('open');
+  confirmDeleteDebt(debtEditIdx);
 }
 
 function deleteDebt(i) {
@@ -4444,19 +4525,64 @@ function saveDebtModal() {
   const balance = parseFloat(document.getElementById('debt-modal-balance').value) || 0;
   const max     = parseFloat(document.getElementById('debt-modal-max').value) || balance;
   const rate    = document.getElementById('debt-modal-rate').value.trim();
+  const paymentRaw = document.getElementById('debt-modal-payment').value.trim();
+  const thisMonthRaw = document.getElementById('debt-modal-payment-thismonth').value.trim();
+  const paymentOverride = thisMonthRaw !== '' ? (parseFloat(thisMonthRaw) || 0) : undefined;
   if (!name) { document.getElementById('debt-modal-name').focus(); return; }
+
   pushUndo();
-  const obj = { name, balance, max, rate };
-  if (debtEditIdx !== null) {
-    // Save into month snapshot — also update base debts if it's a name/rate/max change
+  const curKey = monthKey(calYear, calMonth);
+  const i = debtEditIdx;
+
+  if (i !== null) {
+    // Recurring payment: only update if the field has a value; otherwise keep existing
+    const existingPayment = debts[i] ? (debts[i].payment || 0) : 0;
+    const payment = paymentRaw !== '' ? (parseFloat(paymentRaw) || 0) : existingPayment;
+    const recurringChanged = payment !== existingPayment;
+
+    // 1. Update base debt — recurring payment only changes if explicitly edited
+    if (debts[i]) debts[i] = { ...debts[i], name, max, rate, payment };
+
+    // 2. Write this month's snapshot — payment field always holds the recurring value,
+    //    paymentOverride holds the this-month-only amount independently
     const monthData = ensureMonthDebts(calYear, calMonth);
-    monthData[debtEditIdx] = obj;
-    // Keep base debt name/max/rate in sync (balance stays per-month)
-    if (debts[debtEditIdx]) {
-      debts[debtEditIdx] = { ...debts[debtEditIdx], name, max, rate };
+    monthData[i] = { ...monthData[i], name, max, rate, balance, payment };
+    if (paymentOverride !== undefined) {
+      monthData[i].paymentOverride = paymentOverride;
+    } else {
+      delete monthData[i].paymentOverride;
+    }
+
+    // 3. For all existing FUTURE month snapshots: update name/rate/max,
+    //    and only re-project balances if the recurring payment actually changed.
+    //    A this-month override never cascades into future snapshots.
+    //    Past snapshots are never touched.
+    const futureKeys = Object.keys(monthlyDebts).filter(k => k > curKey).sort();
+    for (const k of futureKeys) {
+      if (monthlyDebts[k][i] === undefined) continue;
+      const futurePayment = recurringChanged ? payment : (monthlyDebts[k][i].payment || payment);
+      if (recurringChanged) {
+        // Re-project balance: use the previous month's balance minus its effective payment
+        const [ky, km] = k.split('-').map(Number);
+        const prevMo = km === 0 ? 11 : km - 1;
+        const prevYr = km === 0 ? ky - 1 : ky;
+        const prevSnap = monthlyDebts[monthKey(prevYr, prevMo)];
+        const prevEntry = prevSnap && prevSnap[i];
+        const prevBal = prevEntry !== undefined ? prevEntry.balance : null;
+        // For projection, always use the recurring payment (not override) from the previous month
+        const prevRecurringPayment = prevEntry ? (prevEntry.payment || 0) : payment;
+        const projectedBalance = prevBal !== null ? Math.max(0, prevBal - prevRecurringPayment) : monthlyDebts[k][i].balance;
+        monthlyDebts[k][i] = { ...monthlyDebts[k][i], name, max, rate, payment: futurePayment, balance: projectedBalance };
+      } else {
+        // Only update metadata, leave balance untouched
+        monthlyDebts[k][i] = { ...monthlyDebts[k][i], name, max, rate, payment: futurePayment };
+      }
+      delete monthlyDebts[k][i].paymentOverride;
     }
   } else {
-    // New debt: add to both base and current month snapshot
+    // New debt
+    const payment = parseFloat(paymentRaw) || 0;
+    const obj = { name, balance, max, rate, payment };
     debts.push(obj);
     ensureMonthDebts(calYear, calMonth).push({ ...obj });
   }
@@ -6320,9 +6446,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       <label>Interest Rate (optional)</label>
       <input type="text" id="debt-modal-rate" placeholder="e.g. 7.95%">
     </div>
-    <div class="modal-actions">
+    <div class="form-field">
+      <label>Recurring Monthly Payment (CAD)</label>
+      <input type="number" id="debt-modal-payment" placeholder="0" min="0">
+      <div style="font-size:0.7143em;color:var(--muted);margin-top:5px">Applies from this month forward — does not affect past months</div>
+    </div>
+    <div id="debt-modal-thismonth-wrap" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:2px">
+      <div class="form-field" style="margin-bottom:0">
+        <label>This Month's Payment (CAD) <span style="font-weight:400;color:var(--muted);font-size:0.85em">— override</span></label>
+        <input type="number" id="debt-modal-payment-thismonth" placeholder="Leave blank to use recurring" min="0">
+        <div style="font-size:0.7143em;color:var(--muted);margin-top:5px">Overrides the recurring amount for <span id="debt-modal-thismonth-label"></span> only</div>
+      </div>
+    </div>
+    <div class="modal-actions" style="flex-wrap:wrap;gap:8px">
       <button class="btn-primary" onclick="saveDebtModal()">Save</button>
       <button class="btn-secondary" onclick="closeDebtModal()">Cancel</button>
+      <button class="btn-secondary" id="debt-modal-delete-btn" onclick="debtModalDelete()" style="display:none;margin-left:auto;color:var(--expense-red);border-color:var(--expense-red)">Delete</button>
     </div>
   </div>
 </div>
