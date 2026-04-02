@@ -648,6 +648,23 @@
     color: var(--invest-blue);
   }
 
+  /* BANK ACCOUNTS */
+  .bank-item {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .bank-item:last-child { border-bottom: none; }
+
+  .bank-value {
+    font-family: var(--font-mono);
+    font-size: 1.0em;
+    font-weight: 500;
+    color: var(--income-green);
+  }
+
   /* ADD EXPENSE */
   .add-btn {
     width: 100%;
@@ -1793,6 +1810,12 @@
       <span class="nav-badge" id="nav-badge-invest">$18,025</span>
     </button>
 
+    <button class="nav-item" onclick="navTo('bankaccounts')" id="nav-bankaccounts">
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="14" height="9" rx="1.5"/><path d="M1 9h14M4 12h2M8 1l7 5H1z"/></svg></span>
+      Bank Accounts
+      <span class="nav-badge" id="nav-badge-bankaccounts">$0</span>
+    </button>
+
     <button class="nav-item" onclick="navTo('creditcards')" id="nav-creditcards">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5"></rect><line x1="1" y1="7" x2="15" y2="7"></line><line x1="4" y1="11" x2="6" y2="11"></line></svg></span>
       Credit Cards
@@ -1890,6 +1913,13 @@
       <div class="value" id="total-debt">$46,882</div>
       <div class="sub" id="debt-change-sub">vs last month: <span style="color:var(--income-green)">▼ $1,299 (3%)</span></div>
       <div class="bar-bg"><div class="bar-fill" id="debt-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card" style="border-color: rgba(62,255,163,0.3)">
+      <div class="label">Total Cash</div>
+      <div class="value" id="total-cash" style="color: var(--income-green);">$0</div>
+      <div class="sub" id="cash-change-sub">Bank account balances</div>
+      <div id="cash-asof-sub" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px"></div>
+      <div class="bar-bg"><div class="bar-fill" id="cash-bar" style="width:0%; background: var(--income-green)"></div></div>
     </div>
     </div>
 
@@ -2867,6 +2897,21 @@
     </div>
   </div><!-- /page-investments -->
 
+  <!-- ══ PAGE: BANK ACCOUNTS ══════════════════════════════════════ -->
+  <div class="page" id="page-bankaccounts">
+    <div class="section" id="bank-panel">
+      <div class="section-header">
+        <div class="section-title">
+          <div class="section-dot" style="background: var(--income-green)"></div>
+          Bank Accounts
+        </div>
+        <div class="section-total" style="color: var(--income-green)" id="bank-total">$0</div>
+      </div>
+      <div id="bank-body"></div>
+      <button class="add-btn" onclick="addBankAccount()">+ Add account</button>
+    </div>
+  </div><!-- /page-bankaccounts -->
+
   <!-- ══ PAGE: CALENDAR ════════════════════════════════════ -->
   <div class="page" id="page-calendar">
   <div class="section" id="calendar-section" style="margin-top:0">
@@ -3033,6 +3078,17 @@ let creditCards = [];
 let ccActualSpend = {};
 // CC_ACTUAL_END
 
+// BANK_ACCOUNTS_START
+const bankAccounts = [
+  { name: 'CIBC Chequing', balance: 0, type: 'chequing', asOf: '' },
+  { name: 'EQ Bank', balance: 0, type: 'chequing', asOf: '' },
+];
+// BANK_ACCOUNTS_END
+
+// MONTHLY_BANK_START
+let monthlyBankAccounts = {};
+// MONTHLY_BANK_END
+
 function loadState() {
   try {
     // Try multiple keys so data survives filename/URL changes
@@ -3060,6 +3116,8 @@ function loadState() {
     if (saved.rogersPointsRedemptions) rogersPointsRedemptions = saved.rogersPointsRedemptions;
     if (saved.creditCards && Array.isArray(saved.creditCards)) creditCards = saved.creditCards;
     if (saved.ccActualSpend) ccActualSpend = saved.ccActualSpend;
+    if (saved.bankAccountsData && Array.isArray(saved.bankAccountsData)) { bankAccounts.length = 0; bankAccounts.push(...saved.bankAccountsData); }
+    if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
 
     // Fill in any missing amounts from baked defaults
     budget.expenses.forEach(e => {
@@ -3093,6 +3151,8 @@ function buildSavePayload() {
     rogersPointsRedemptions,
     creditCards,
     ccActualSpend,
+    bankAccountsData: bankAccounts,
+    monthlyBankAccounts,
   };
 }
 
@@ -3151,6 +3211,8 @@ async function loadFromGist() {
     if (saved.rogersPointsRedemptions) rogersPointsRedemptions = saved.rogersPointsRedemptions;
     if (saved.creditCards && Array.isArray(saved.creditCards)) creditCards = saved.creditCards;
     if (saved.ccActualSpend)   ccActualSpend  = saved.ccActualSpend;
+    if (saved.bankAccountsData && Array.isArray(saved.bankAccountsData)) { bankAccounts.length = 0; bankAccounts.push(...saved.bankAccountsData); }
+    if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
     budget.expenses.forEach(e => { if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0; });
     budget.income.forEach(i =>   { if (incomeAmounts[i.id]  === undefined) incomeAmounts[i.id]  = i.amount || 0; });
     // also persist locally as fallback
@@ -3183,7 +3245,7 @@ function saveGistConfig() {
   loadFromGist().then(ok => {
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); updateSummary(); renderCalendar();
+      renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
       setSyncStatus('ok', '✓ Logged in');
     } else {
       setSyncStatus('error', 'Could not load — check your token and ID');
@@ -3211,7 +3273,7 @@ async function handlePull() {
   const ok = await loadFromGist();
   if (ok) {
     renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-    renderCreditCardsPage(); updateSummary(); renderCalendar();
+    renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
     setSyncStatus('ok', '✓ Syncing...');
     setTimeout(() => setSyncStatus('idle'), 2500);
   } else {
@@ -4020,6 +4082,45 @@ function updateSummary() {
   drawIncomePie();
   updateNavBadges();
   updateRogersWidget();
+
+  // Total Cash stat card
+  const bankData = getBankAccountsForMonth(calYear, calMonth);
+  const totalCash = bankData.reduce((s, a) => s + a.balance, 0);
+  const cashEl = document.getElementById('total-cash');
+  if (cashEl) cashEl.textContent = fmt(totalCash);
+  const prevMoCash = calMonth === 0 ? 11 : calMonth - 1;
+  const prevYrCash = calMonth === 0 ? calYear - 1 : calYear;
+  const prevBankData = getBankAccountsForMonth(prevYrCash, prevMoCash);
+  const prevTotalCash = prevBankData.reduce((s, a) => s + a.balance, 0);
+  const cashSubEl = document.getElementById('cash-change-sub');
+  if (cashSubEl) {
+    if (prevTotalCash > 0 && prevTotalCash !== totalCash) {
+      const diff = totalCash - prevTotalCash;
+      const pct = Math.round(Math.abs(diff / prevTotalCash) * 100);
+      const arrow = diff >= 0 ? '▲' : '▼';
+      const color = diff >= 0 ? 'var(--income-green)' : 'var(--expense-red)';
+      cashSubEl.innerHTML = `vs last month: <span style="color:${color}">${arrow} ${fmt(Math.abs(diff))} (${pct}%)</span>`;
+    } else {
+      cashSubEl.textContent = 'Bank account balances';
+    }
+  }
+  // Show oldest "as of" date among chequing accounts on summary
+  const cashAsofEl = document.getElementById('cash-asof-sub');
+  if (cashAsofEl) {
+    const chequingAccounts = bankAccounts.filter(a => a.type !== 'savings' && a.asOf);
+    if (chequingAccounts.length > 0) {
+      const oldest = chequingAccounts.sort((a,b) => a.asOf < b.asOf ? -1 : 1)[0];
+      cashAsofEl.textContent = 'as of ' + fmtAsOf(oldest.asOf);
+    } else {
+      cashAsofEl.textContent = '';
+    }
+  }
+  const cashBarEl = document.getElementById('cash-bar');
+  if (cashBarEl) {
+    const totalDebtVal = getDebtsForMonth(calYear, calMonth).reduce((s,d)=>s+d.balance,0);
+    const maxVal = Math.max(totalCash, totalDebtVal, 1);
+    cashBarEl.style.width = Math.min(100, Math.round((totalCash / maxVal) * 100)) + '%';
+  }
 }
 
 function updateIncome(id, val) {
@@ -4027,6 +4128,258 @@ function updateIncome(id, val) {
   incomeAmounts[id] = parseFloat(val) || 0;
   updateSummary();
 }
+
+// ─── BANK ACCOUNTS ───────────────────────────────────────────────
+
+function getBankAccountsForMonth(yr, mo) {
+  const k = monthKey(yr, mo);
+  if (!monthlyBankAccounts[k]) return bankAccounts;
+  return bankAccounts.map((base, i) => {
+    if (base.type === 'savings' && monthlyBankAccounts[k][i] !== undefined) {
+      return monthlyBankAccounts[k][i];
+    }
+    return base;
+  });
+}
+
+function ensureMonthBankAccounts(yr, mo) {
+  const k = monthKey(yr, mo);
+  if (!monthlyBankAccounts[k]) {
+    monthlyBankAccounts[k] = JSON.parse(JSON.stringify(bankAccounts));
+  }
+  return monthlyBankAccounts[k];
+}
+
+function clearMonthBankAccounts() {
+  delete monthlyBankAccounts[monthKey(calYear, calMonth)];
+  renderBankAccounts();
+  updateSummary();
+}
+
+function fmtAsOf(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function getBankLogo(a) {
+  // First: account-specific stored logo
+  if (a.logo) return a.logo;
+  // Fallback: match against LOGOS by name
+  const srcKey = a.name.toLowerCase().replace(/\s+/g,'').replace('chequing','').replace('savings','').replace('bank','').replace('account','');
+  const possibleKeys = [a.name.toLowerCase(), srcKey, a.name.split(' ')[0].toLowerCase()];
+  return possibleKeys.map(k => LOGOS[k]).find(Boolean) || null;
+}
+
+function renderBankAccounts() {
+  const body = document.getElementById('bank-body');
+  if (!body) return;
+  const yr = calYear, mo = calMonth;
+  const monthData = getBankAccountsForMonth(yr, mo);
+  const hasSavings = bankAccounts.some(a => a.type === 'savings');
+  const isSnapshot = hasSavings && !!monthlyBankAccounts[monthKey(yr, mo)];
+
+  const total = monthData.reduce((s, a) => s + a.balance, 0);
+  const totalEl = document.getElementById('bank-total');
+  if (totalEl) totalEl.textContent = fmt(total);
+
+  const prevMo = mo === 0 ? 11 : mo - 1;
+  const prevYr = mo === 0 ? yr - 1 : yr;
+  const prevData = getBankAccountsForMonth(prevYr, prevMo);
+
+  function renderAccountRow(a, i) {
+    const isSavings = a.type === 'savings';
+    const asOfLabel = fmtAsOf(a.asOf);
+    const logoSrc = getBankLogo(a);
+    const logoHtml = logoSrc
+      ? `<img src="${logoSrc}" style="width:20px;height:20px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0">`
+      : `<span style="width:20px;height:20px;border-radius:4px;background:var(--surface2);flex-shrink:0;display:inline-block"></span>`;
+
+    let diffStr = '';
+    if (isSavings) {
+      const prevBal = prevData[i] ? prevData[i].balance : null;
+      const diff = prevBal !== null ? a.balance - prevBal : 0;
+      if (prevBal !== null && diff !== 0) {
+        diffStr = diff > 0
+          ? ` <span style="font-size:0.7143em;color:var(--income-green)">▲ ${fmt(Math.abs(diff))}</span>`
+          : ` <span style="font-size:0.7143em;color:var(--expense-red)">▼ ${fmt(Math.abs(diff))}</span>`;
+      }
+    }
+
+    const subLine = isSavings
+      ? `<div class="progress-track" style="width:120px;margin-top:6px"><div class="progress-fill green" style="width:${total > 0 ? Math.min(100, Math.round((a.balance/total)*100)) : 0}%"></div></div>`
+      : asOfLabel
+        ? `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px">as of ${asOfLabel}</div>`
+        : `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px;font-style:italic">balance not yet updated</div>`;
+
+    return `
+    <div class="bank-item">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.9286em;font-weight:500">
+          ${logoHtml}${escHtml(a.name)}
+        </div>
+        ${subLine}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="bank-value">${fmt(a.balance)}${diffStr}</div>
+        <div class="item-actions" style="opacity:1">
+          <button class="icon-btn" onclick="editBankAccount(${i})" title="Edit">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const monthName = MONTHS[mo] + ' ' + yr;
+  const header = `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px 6px;background:var(--surface2);border-bottom:1px solid var(--border)">
+    <span style="font-family:var(--font-mono,monospace);font-size:0.7143em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">${monthName}</span>
+    ${isSnapshot ? `<button style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);background:none;border:none;cursor:pointer;padding:0" onclick="clearMonthBankAccounts()" title="Reset savings to default">↩ Reset savings</button>` : ''}
+  </div>`;
+
+  const chequingAccounts = bankAccounts.map((a,i)=>({a,i})).filter(x => x.a.type !== 'savings');
+  const savingsAccounts  = bankAccounts.map((a,i)=>({a,i})).filter(x => x.a.type === 'savings');
+
+  let html = header;
+
+  if (chequingAccounts.length === 0 && savingsAccounts.length === 0) {
+    html += '<div style="padding:20px;font-family:var(--font-mono);font-size:0.8571em;color:var(--muted);text-align:center">No accounts yet. Add one below.</div>';
+  } else {
+    if (chequingAccounts.length > 0) {
+      html += `<div style="padding:6px 20px 2px;font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;background:var(--surface2);border-bottom:1px solid var(--border)">Chequing</div>`;
+      html += chequingAccounts.map(({a, i}) => renderAccountRow(a, i)).join('');
+    }
+    if (savingsAccounts.length > 0) {
+      html += `<div style="padding:6px 20px 2px;font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;background:var(--surface2);border-bottom:1px solid var(--border);${chequingAccounts.length > 0 ? 'border-top:1px solid var(--border)' : ''}">Savings</div>`;
+      html += savingsAccounts.map(({a, i}) => renderAccountRow(a, i)).join('');
+    }
+  }
+
+  body.innerHTML = html;
+}
+
+let bankEditIdx = null;
+let bankModalLogoData = null; // base64 for new logo upload
+
+function previewBankLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    bankModalLogoData = e.target.result;
+    const prev = document.getElementById('bank-modal-logo-preview');
+    if (prev) prev.innerHTML = `<img src="${bankModalLogoData}" style="width:34px;height:34px;object-fit:contain;border-radius:6px">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function addBankAccount() {
+  bankEditIdx = null;
+  bankModalLogoData = null;
+  document.getElementById('bank-modal-title').textContent = 'Add Bank Account';
+  document.getElementById('bank-modal-name').value = '';
+  document.getElementById('bank-modal-balance').value = '';
+  document.getElementById('bank-modal-asof').value = '';
+  document.getElementById('bank-modal-type').value = 'chequing';
+  document.getElementById('bank-modal-delete-btn').style.display = 'none';
+  const prev = document.getElementById('bank-modal-logo-preview');
+  if (prev) prev.innerHTML = '<span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>';
+  toggleBankModalType();
+  document.getElementById('bank-modal').classList.add('open');
+  setTimeout(() => document.getElementById('bank-modal-name').focus(), 150);
+}
+
+function editBankAccount(i) {
+  bankEditIdx = i;
+  bankModalLogoData = null;
+  const acc = bankAccounts[i];
+  document.getElementById('bank-modal-title').textContent = 'Edit Account';
+  document.getElementById('bank-modal-name').value = acc.name;
+  document.getElementById('bank-modal-balance').value = acc.balance;
+  document.getElementById('bank-modal-asof').value = acc.asOf || '';
+  document.getElementById('bank-modal-type').value = acc.type || 'chequing';
+  document.getElementById('bank-modal-delete-btn').style.display = '';
+  const prev = document.getElementById('bank-modal-logo-preview');
+  if (prev) {
+    const logo = getBankLogo(acc);
+    prev.innerHTML = logo
+      ? `<img src="${logo}" style="width:34px;height:34px;object-fit:contain;border-radius:6px">`
+      : '<span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>';
+  }
+  toggleBankModalType();
+  document.getElementById('bank-modal').classList.add('open');
+  setTimeout(() => document.getElementById('bank-modal-name').focus(), 150);
+}
+
+function toggleBankModalType() {
+  const type = document.getElementById('bank-modal-type').value;
+  const asofRow = document.getElementById('bank-modal-asof-row');
+  if (asofRow) asofRow.style.display = type === 'chequing' ? '' : 'none';
+}
+
+function saveBankModal() {
+  const name    = document.getElementById('bank-modal-name').value.trim();
+  const balance = parseFloat(document.getElementById('bank-modal-balance').value) || 0;
+  const type    = document.getElementById('bank-modal-type').value || 'chequing';
+  const asOf    = type === 'chequing' ? (document.getElementById('bank-modal-asof').value || '') : '';
+  if (!name) { document.getElementById('bank-modal-name').focus(); return; }
+  pushUndo();
+
+  // Build object; preserve existing logo if no new upload
+  const existing = bankEditIdx !== null ? bankAccounts[bankEditIdx] : null;
+  const logo = bankModalLogoData || (existing ? existing.logo : null) || null;
+
+  // Also register logo in LOGOS keyed by first word of name for calendar use
+  if (logo) {
+    const logoKey = name.split(' ')[0].toLowerCase();
+    LOGOS[logoKey] = logo;
+  }
+
+  const obj = { name, balance, type, asOf, ...(logo ? { logo } : {}) };
+
+  if (bankEditIdx !== null) {
+    Object.assign(bankAccounts[bankEditIdx], obj);
+    if (type === 'savings') {
+      const monthData = ensureMonthBankAccounts(calYear, calMonth);
+      monthData[bankEditIdx] = { ...obj };
+    }
+  } else {
+    bankAccounts.push(obj);
+    if (type === 'savings') {
+      ensureMonthBankAccounts(calYear, calMonth).push({ ...obj });
+    }
+  }
+  document.getElementById('bank-modal').classList.remove('open');
+  renderBankAccounts();
+  renderCalendar(); // refresh footer
+  updateSummary();
+}
+
+function closeBankModal(e) {
+  if (e && e.target !== document.getElementById('bank-modal')) return;
+  document.getElementById('bank-modal').classList.remove('open');
+}
+
+function deleteBankAccount(i) {
+  bankAccounts.splice(i, 1);
+  Object.keys(monthlyBankAccounts).forEach(k => {
+    if (monthlyBankAccounts[k][i] !== undefined) monthlyBankAccounts[k].splice(i, 1);
+  });
+  document.getElementById('bank-modal').classList.remove('open');
+  renderBankAccounts();
+  renderCalendar();
+  updateSummary();
+}
+
+function confirmDeleteBankAccount(i) {
+  const name = bankAccounts[i] ? bankAccounts[i].name : 'this account';
+  if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+  pushUndo();
+  deleteBankAccount(i);
+}
+
+
 
 // ─── UNDO SYSTEM ─────────────────────────────────────────────────
 const UNDO_LIMIT = 30;
@@ -4047,6 +4400,8 @@ function captureState() {
     monthlyInvests:  monthlyInvests,
     rogersPoints:    rogersPointsRedemptions,
     ccActualSpend:   ccActualSpend,
+    bankAccounts:    bankAccounts,
+    monthlyBankAccounts: monthlyBankAccounts,
   });
 }
 
@@ -4083,7 +4438,14 @@ function performUndo() {
     Object.keys(ccActualSpend).forEach(k => delete ccActualSpend[k]);
     Object.assign(ccActualSpend, snap.ccActualSpend);
   }
-  renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+  if (snap.bankAccounts) {
+    bankAccounts.splice(0, bankAccounts.length, ...snap.bankAccounts);
+  }
+  if (snap.monthlyBankAccounts) {
+    Object.keys(monthlyBankAccounts).forEach(k => delete monthlyBankAccounts[k]);
+    Object.assign(monthlyBankAccounts, snap.monthlyBankAccounts);
+  }
+  renderIncome(); renderExpenses(); renderDebts(); renderInvestments(); renderBankAccounts();
   updateSummary(); renderCalendar();
   if (document.getElementById('page-creditcards').classList.contains('active')) renderCreditCardsPage();
   syncUndoBtn();
@@ -4291,7 +4653,7 @@ document.addEventListener('keydown', e => {
     }
   }
   if (e.key === 'Escape') {
-    ['income-modal','expense-modal','debt-modal','invest-modal','cat-modal','pay-edit-overlay','add-card-modal'].forEach(id => {
+    ['income-modal','expense-modal','debt-modal','invest-modal','cat-modal','pay-edit-overlay','add-card-modal','bank-modal'].forEach(id => {
       document.getElementById(id).classList.remove('open');
     });
     window._calReturnDay = null;
@@ -4300,6 +4662,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('expense-modal').classList.contains('open'))  saveExpenseModal();
   if (e.key === 'Enter' && document.getElementById('debt-modal').classList.contains('open'))     saveDebtModal();
   if (e.key === 'Enter' && document.getElementById('invest-modal').classList.contains('open'))   saveInvestModal();
+  if (e.key === 'Enter' && document.getElementById('bank-modal').classList.contains('open'))     saveBankModal();
 });
 
 function reopenSection(id) {
@@ -4795,6 +5158,7 @@ function calPrevPeriod() {
   renderCalendar();
   renderDebts();
   renderInvestments();
+  renderBankAccounts();
 }
 function calNextPeriod() {
   calDrillDay = null;
@@ -4806,6 +5170,7 @@ function calNextPeriod() {
   renderCalendar();
   renderDebts();
   renderInvestments();
+  renderBankAccounts();
 }
 
 function getWeekStart(date) {
@@ -4998,6 +5363,32 @@ function openCalDetail(day) {
 }
 
 // ── Main render dispatcher ──────────────────────────────────────
+// ── BANK BALANCE FOOTER (shown below month/week/day calendar views) ──
+function buildCalBankBalanceFooter() {
+  const chequing = bankAccounts.filter(a => a.type !== 'savings');
+  if (chequing.length === 0) return '';
+  const rows = chequing.map(a => {
+    const srcKey = a.name.toLowerCase().replace(/\s+/g,'').replace('chequing','').replace('bank','').replace('account','');
+    const possibleKeys = [a.name.toLowerCase(), srcKey, a.name.split(' ')[0].toLowerCase()];
+    const logoSrc = possibleKeys.map(k => LOGOS[k]).find(Boolean) || null;
+    const logoHtml = logoSrc
+      ? `<img src="${logoSrc}" style="width:16px;height:16px;border-radius:3px;object-fit:contain;background:#fff;flex-shrink:0">`
+      : `<span style="width:16px;height:16px;display:inline-block;border-radius:3px;background:var(--surface2);flex-shrink:0"></span>`;
+    const asOfHtml = a.asOf
+      ? `<span style="color:var(--muted);font-size:0.85em"> · as of ${fmtAsOf(a.asOf)}</span>`
+      : `<span style="color:var(--muted);font-size:0.85em;font-style:italic"> · not updated</span>`;
+    return `<div style="display:flex;align-items:center;gap:8px">
+      ${logoHtml}
+      <span style="flex:1;color:var(--text)">${escHtml(a.name)}${asOfHtml}</span>
+      <span style="font-family:var(--font-mono);font-weight:600;color:var(--income-green)">${fmt(a.balance)}</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:14px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
+    <div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Chequing Balances</div>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:0.9em;font-family:var(--font-mono)">${rows}</div>
+  </div>`;
+}
+
 function renderCalendar() {
   const body = document.getElementById('calendar-body');
   updateCalLabel();
@@ -5076,6 +5467,7 @@ function renderMonthView(body) {
       + '</div>';
   }
   out += '</div>';
+  out += buildCalBankBalanceFooter();
   body.innerHTML = out;
 }
 
@@ -5122,6 +5514,7 @@ function renderWeekView(body) {
       + '</div>';
   }
   out += '</div>';
+  out += buildCalBankBalanceFooter();
   body.innerHTML = out;
 }
 
@@ -5133,7 +5526,7 @@ function calSetDay(yr, mo, dy) {
 
 // ── DAY VIEW (standalone) ───────────────────────────────────────
 function renderDayViewStandalone(body) {
-  body.innerHTML = buildDayDetailHTML(calYear, calMonth, calDay, false);
+  body.innerHTML = buildDayDetailHTML(calYear, calMonth, calDay, false) + buildCalBankBalanceFooter();
 }
 
 // ── YEAR VIEW ───────────────────────────────────────────────────
@@ -5382,6 +5775,9 @@ function stepMonth(delta) {
   renderExpenses();
   renderDebts();
   renderInvestments();
+  if (document.getElementById('page-bankaccounts') && document.getElementById('page-bankaccounts').classList.contains('active')) {
+    renderBankAccounts();
+  }
   if (document.getElementById('page-creditcards') && document.getElementById('page-creditcards').classList.contains('active')) {
     renderCreditCardsPage();
   }
@@ -5456,6 +5852,9 @@ function selectYear(yr) {
   renderExpenses();
   renderDebts();
   renderInvestments();
+  if (document.getElementById('page-bankaccounts') && document.getElementById('page-bankaccounts').classList.contains('active')) {
+    renderBankAccounts();
+  }
   if (document.getElementById('page-creditcards') && document.getElementById('page-creditcards').classList.contains('active')) {
     renderCreditCardsPage();
   }
@@ -5474,7 +5873,7 @@ function selectYear(yr) {
 const PAGE_TITLES = {
   summary: 'Summary', income: 'Money In', expenses: 'Money Out',
   debt: 'Debt', investments: 'Investments', calendar: 'Calendar',
-  creditcards: 'Credit Cards'
+  creditcards: 'Credit Cards', bankaccounts: 'Bank Accounts'
 };
 
 function navTo(page) {
@@ -5496,6 +5895,8 @@ function navTo(page) {
   if (page === 'calendar') renderCalendar();
   // Trigger credit cards render when switching to it
   if (page === 'creditcards') renderCreditCardsPage();
+  // Trigger bank accounts render when switching to it
+  if (page === 'bankaccounts') renderBankAccounts();
   // Reopen section bodies after display change
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
@@ -5524,6 +5925,11 @@ function updateNavBadges() {
   if (el('nav-badge-creditcards')) {
     const ccCount = typeof creditCards !== 'undefined' ? creditCards.length : 1;
     el('nav-badge-creditcards').textContent = ccCount === 1 ? '1 card' : ccCount + ' cards';
+  }
+  if (el('nav-badge-bankaccounts')) {
+    const bankData = getBankAccountsForMonth(calYear, calMonth);
+    const totalBank = bankData.reduce((s, a) => s + a.balance, 0);
+    el('nav-badge-bankaccounts').textContent = '$' + Math.round(totalBank).toLocaleString('en-CA');
   }
   // Also sync the summary balance bars
   if (totalIncome > 0) {
@@ -6213,6 +6619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderExpenses();
   renderDebts();
   renderInvestments();
+  renderBankAccounts();
   renderCreditCardsPage();
   updateSummary();
   renderCalendar();
@@ -6240,7 +6647,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ok = await loadFromGist();
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); updateSummary(); renderCalendar();
+      renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
       setSyncStatus('ok', '✓ Synced');
       setTimeout(() => setSyncStatus('idle'), 2500);
     } else {
@@ -6333,7 +6740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const ok = await loadFromGist();
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-        renderCreditCardsPage(); updateSummary(); renderCalendar();
+        renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
         label.textContent = '✓ Synced';
         setSyncStatus('ok', '✓ Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
@@ -6488,6 +6895,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveInvestModal()">Save</button>
       <button class="btn-secondary" onclick="closeInvestModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- BANK ACCOUNT MODAL -->
+<div class="modal-overlay" id="bank-modal" onclick="closeBankModal(event)">
+  <div class="modal">
+    <h2 id="bank-modal-title">Add Bank Account</h2>
+    <div class="form-field">
+      <label>Account Name</label>
+      <input type="text" id="bank-modal-name" placeholder="e.g. CIBC Chequing, EQ Savings">
+    </div>
+    <div class="form-field">
+      <label>Account Type</label>
+      <select id="bank-modal-type" onchange="toggleBankModalType()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
+        <option value="chequing">Chequing — manually updated balance</option>
+        <option value="savings">Savings — monthly balance tracking</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>Current Balance (CAD)</label>
+      <input type="number" id="bank-modal-balance" placeholder="0" min="0" step="0.01">
+    </div>
+    <div class="form-field" id="bank-modal-asof-row">
+      <label>Balance as of</label>
+      <input type="date" id="bank-modal-asof" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
+      <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:4px">When did you last check this balance?</div>
+    </div>
+    <div class="form-field">
+      <label>Bank Logo <span style="color:var(--muted);font-size:0.8em">(optional)</span></label>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+        <div id="bank-modal-logo-preview" style="width:38px;height:38px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">
+          <span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>
+        </div>
+        <div style="flex:1">
+          <label style="display:inline-block;padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:0.8571em;color:var(--text);font-family:var(--font-sans);transition:all .15s" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
+            Upload logo…
+            <input type="file" accept="image/*" onchange="previewBankLogo(this)" style="display:none">
+          </label>
+          <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:4px">PNG or SVG, shown on calendar & account list</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="saveBankModal()">Save</button>
+      <button class="btn-secondary" onclick="closeBankModal()">Cancel</button>
+    </div>
+    <div id="bank-modal-delete-btn" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <button onclick="confirmDeleteBankAccount(bankEditIdx)" style="width:100%;padding:10px;background:transparent;border:1px solid var(--expense-red);color:var(--expense-red);border-radius:8px;font-family:var(--font-sans);font-size:0.9286em;cursor:pointer;transition:all .15s" onmouseenter="this.style.background='rgba(255,91,122,.1)'" onmouseleave="this.style.background='transparent'">
+        Delete Account
+      </button>
     </div>
   </div>
 </div>
