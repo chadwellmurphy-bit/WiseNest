@@ -3591,7 +3591,14 @@ function getInvestsForMonth(yr, mo) {
 function ensureMonthDebts(yr, mo) {
   const k = monthKey(yr, mo);
   if (!monthlyDebts[k]) {
-    monthlyDebts[k] = JSON.parse(JSON.stringify(debts));
+    // Seed from getDebtsForMonth so projected balances (from recurring payments) are
+    // preserved for all rows — not just the one being edited. Also strip paymentOverride
+    // since that is strictly month-specific and must never bleed into a new month.
+    monthlyDebts[k] = JSON.parse(JSON.stringify(getDebtsForMonth(yr, mo))).map(d => {
+      const clean = { ...d };
+      delete clean.paymentOverride;
+      return clean;
+    });
   }
   return monthlyDebts[k];
 }
