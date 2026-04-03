@@ -3080,8 +3080,8 @@ let ccActualSpend = {};
 
 // BANK_ACCOUNTS_START
 const bankAccounts = [
-  { name: 'CIBC Chequing', balance: 0, type: 'chequing', asOf: '' },
-  { name: 'EQ Bank', balance: 0, type: 'chequing', asOf: '' },
+  { id: 'bank_cibc', name: 'CIBC Chequing', balance: 0, type: 'chequing', asOf: '' },
+  { id: 'bank_eq',   name: 'EQ Bank',       balance: 0, type: 'chequing', asOf: '' },
 ];
 // BANK_ACCOUNTS_END
 
@@ -3116,7 +3116,13 @@ function loadState() {
     if (saved.rogersPointsRedemptions) rogersPointsRedemptions = saved.rogersPointsRedemptions;
     if (saved.creditCards && Array.isArray(saved.creditCards)) creditCards = saved.creditCards;
     if (saved.ccActualSpend) ccActualSpend = saved.ccActualSpend;
-    if (saved.bankAccountsData && Array.isArray(saved.bankAccountsData)) { bankAccounts.length = 0; bankAccounts.push(...saved.bankAccountsData); }
+    if (saved.bankAccountsData && Array.isArray(saved.bankAccountsData)) {
+      bankAccounts.length = 0;
+      saved.bankAccountsData.forEach((a, i) => {
+        if (!a.id) a.id = 'bank_' + (a.name ? a.name.toLowerCase().replace(/\s+/g,'_') : i) + '_' + i;
+        bankAccounts.push(a);
+      });
+    }
     if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
 
     // Fill in any missing amounts from baked defaults
@@ -3211,8 +3217,15 @@ async function loadFromGist() {
     if (saved.rogersPointsRedemptions) rogersPointsRedemptions = saved.rogersPointsRedemptions;
     if (saved.creditCards && Array.isArray(saved.creditCards)) creditCards = saved.creditCards;
     if (saved.ccActualSpend)   ccActualSpend  = saved.ccActualSpend;
-    if (saved.bankAccountsData && Array.isArray(saved.bankAccountsData)) { bankAccounts.length = 0; bankAccounts.push(...saved.bankAccountsData); }
+    if (saved.bankAccountsData && Array.isArray(saved.bankAccountsData)) {
+      bankAccounts.length = 0;
+      saved.bankAccountsData.forEach((a, i) => {
+        if (!a.id) a.id = 'bank_' + (a.name ? a.name.toLowerCase().replace(/\s+/g,'_') : i) + '_' + i;
+        bankAccounts.push(a);
+      });
+    }
     if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
+    ensureBankIds();
     budget.expenses.forEach(e => { if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0; });
     budget.income.forEach(i =>   { if (incomeAmounts[i.id]  === undefined) incomeAmounts[i.id]  = i.amount || 0; });
     // also persist locally as fallback
@@ -4129,31 +4142,44 @@ function updateIncome(id, val) {
   updateSummary();
 }
 
-// ─── BANK ACCOUNTS ───────────────────────────────────────────────
-
-function getBankAccountsForMonth(yr, mo) {
-  const k = monthKey(yr, mo);
-  if (!monthlyBankAccounts[k]) return bankAccounts;
-  return bankAccounts.map((base, i) => {
-    if (base.type === 'savings' && monthlyBankAccounts[k][i] !== undefined) {
-      return monthlyBankAccounts[k][i];
-    }
-    return base;
+// Backfill missing ids on bankAccounts (for data saved before ids were introduced)
+function ensureBankIds() {
+  bankAccounts.forEach((a, i) => {
+    if (!a.id) a.id = 'bank_' + (a.name ? a.name.toLowerCase().replace(/\s+/g,'_') : i) + '_' + i;
   });
 }
 
-function ensureMonthBankAccounts(yr, mo) {
-  const k = monthKey(yr, mo);
-  if (!monthlyBankAccounts[k]) {
-    monthlyBankAccounts[k] = JSON.parse(JSON.stringify(bankAccounts));
+// ─── BANK ACCOUNTS ───────────────────────────────────────────────
+// monthlyBankAccounts: { "YYYY-M": { accountId: balance } }
+// Savings accounts store balance per-month keyed by account id.
+// Chequing accounts store balance directly on the base object.
+
+function getSavingsBalanceForMonth(id, yr, mo) {
+  const targetNum = yr * 100 + mo;
+  let bestNum = -1, bestBalance = null;
+  for (const k of Object.keys(monthlyBankAccounts)) {
+    const [ky, km] = k.split('-').map(Number);
+    const num = ky * 100 + km;
+    if (num <= targetNum && num > bestNum && monthlyBankAccounts[k][id] !== undefined) {
+      bestNum = num;
+      bestBalance = monthlyBankAccounts[k][id];
+    }
   }
-  return monthlyBankAccounts[k];
+  return bestBalance; // null = no snapshot yet
 }
 
-function clearMonthBankAccounts() {
-  delete monthlyBankAccounts[monthKey(calYear, calMonth)];
-  renderBankAccounts();
-  updateSummary();
+function setSavingsBalanceForMonth(id, yr, mo, balance) {
+  const k = monthKey(yr, mo);
+  if (!monthlyBankAccounts[k]) monthlyBankAccounts[k] = {};
+  monthlyBankAccounts[k][id] = balance;
+}
+
+function getBankAccountsForMonth(yr, mo) {
+  return bankAccounts.map(acc => {
+    if (acc.type !== 'savings') return acc;
+    const snap = getSavingsBalanceForMonth(acc.id, yr, mo);
+    return snap !== null ? { ...acc, balance: snap } : acc;
+  });
 }
 
 function fmtAsOf(dateStr) {
@@ -4164,9 +4190,7 @@ function fmtAsOf(dateStr) {
 }
 
 function getBankLogo(a) {
-  // First: account-specific stored logo
   if (a.logo) return a.logo;
-  // Fallback: match against LOGOS by name
   const srcKey = a.name.toLowerCase().replace(/\s+/g,'').replace('chequing','').replace('savings','').replace('bank','').replace('account','');
   const possibleKeys = [a.name.toLowerCase(), srcKey, a.name.split(' ')[0].toLowerCase()];
   return possibleKeys.map(k => LOGOS[k]).find(Boolean) || null;
@@ -4177,9 +4201,6 @@ function renderBankAccounts() {
   if (!body) return;
   const yr = calYear, mo = calMonth;
   const monthData = getBankAccountsForMonth(yr, mo);
-  const hasSavings = bankAccounts.some(a => a.type === 'savings');
-  const isSnapshot = hasSavings && !!monthlyBankAccounts[monthKey(yr, mo)];
-
   const total = monthData.reduce((s, a) => s + a.balance, 0);
   const totalEl = document.getElementById('bank-total');
   if (totalEl) totalEl.textContent = fmt(total);
@@ -4188,7 +4209,7 @@ function renderBankAccounts() {
   const prevYr = mo === 0 ? yr - 1 : yr;
   const prevData = getBankAccountsForMonth(prevYr, prevMo);
 
-  function renderAccountRow(a, i) {
+  function renderAccountRow(a) {
     const isSavings = a.type === 'savings';
     const asOfLabel = fmtAsOf(a.asOf);
     const logoSrc = getBankLogo(a);
@@ -4196,22 +4217,26 @@ function renderBankAccounts() {
       ? `<img src="${logoSrc}" style="width:20px;height:20px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0">`
       : `<span style="width:20px;height:20px;border-radius:4px;background:var(--surface2);flex-shrink:0;display:inline-block"></span>`;
 
-    let diffStr = '';
+    let subLine;
     if (isSavings) {
-      const prevBal = prevData[i] ? prevData[i].balance : null;
-      const diff = prevBal !== null ? a.balance - prevBal : 0;
-      if (prevBal !== null && diff !== 0) {
-        diffStr = diff > 0
-          ? ` <span style="font-size:0.7143em;color:var(--income-green)">▲ ${fmt(Math.abs(diff))}</span>`
-          : ` <span style="font-size:0.7143em;color:var(--expense-red)">▼ ${fmt(Math.abs(diff))}</span>`;
+      const prevSnap = getSavingsBalanceForMonth(a.id, prevYr, prevMo);
+      if (prevSnap !== null) {
+        const diff = a.balance - prevSnap;
+        if (diff > 0) {
+          subLine = `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--income-green);margin-top:4px">▲ ${fmt(diff)} vs last month</div>`;
+        } else if (diff < 0) {
+          subLine = `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--expense-red);margin-top:4px">▼ ${fmt(Math.abs(diff))} vs last month</div>`;
+        } else {
+          subLine = `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px">no change vs last month</div>`;
+        }
+      } else {
+        subLine = `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px;font-style:italic">no prior month to compare</div>`;
       }
-    }
-
-    const subLine = isSavings
-      ? `<div class="progress-track" style="width:120px;margin-top:6px"><div class="progress-fill green" style="width:${total > 0 ? Math.min(100, Math.round((a.balance/total)*100)) : 0}%"></div></div>`
-      : asOfLabel
+    } else {
+      subLine = asOfLabel
         ? `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px">as of ${asOfLabel}</div>`
         : `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px;font-style:italic">balance not yet updated</div>`;
+    }
 
     return `
     <div class="bank-item">
@@ -4222,9 +4247,9 @@ function renderBankAccounts() {
         ${subLine}
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <div class="bank-value">${fmt(a.balance)}${diffStr}</div>
+        <div class="bank-value">${fmt(a.balance)}</div>
         <div class="item-actions" style="opacity:1">
-          <button class="icon-btn" onclick="editBankAccount(${i})" title="Edit">
+          <button class="icon-btn" onclick="editBankAccount('${a.id}')" title="Edit">
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
           </button>
         </div>
@@ -4233,34 +4258,31 @@ function renderBankAccounts() {
   }
 
   const monthName = MONTHS[mo] + ' ' + yr;
-  const header = `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px 6px;background:var(--surface2);border-bottom:1px solid var(--border)">
+  const header = `<div style="padding:10px 20px 6px;background:var(--surface2);border-bottom:1px solid var(--border)">
     <span style="font-family:var(--font-mono,monospace);font-size:0.7143em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">${monthName}</span>
-    ${isSnapshot ? `<button style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);background:none;border:none;cursor:pointer;padding:0" onclick="clearMonthBankAccounts()" title="Reset savings to default">↩ Reset savings</button>` : ''}
   </div>`;
 
-  const chequingAccounts = bankAccounts.map((a,i)=>({a,i})).filter(x => x.a.type !== 'savings');
-  const savingsAccounts  = bankAccounts.map((a,i)=>({a,i})).filter(x => x.a.type === 'savings');
+  const chequing = monthData.filter(a => a.type !== 'savings');
+  const savings  = monthData.filter(a => a.type === 'savings');
 
   let html = header;
-
-  if (chequingAccounts.length === 0 && savingsAccounts.length === 0) {
+  if (chequing.length === 0 && savings.length === 0) {
     html += '<div style="padding:20px;font-family:var(--font-mono);font-size:0.8571em;color:var(--muted);text-align:center">No accounts yet. Add one below.</div>';
   } else {
-    if (chequingAccounts.length > 0) {
+    if (chequing.length > 0) {
       html += `<div style="padding:6px 20px 2px;font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;background:var(--surface2);border-bottom:1px solid var(--border)">Chequing</div>`;
-      html += chequingAccounts.map(({a, i}) => renderAccountRow(a, i)).join('');
+      html += chequing.map(a => renderAccountRow(a)).join('');
     }
-    if (savingsAccounts.length > 0) {
-      html += `<div style="padding:6px 20px 2px;font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;background:var(--surface2);border-bottom:1px solid var(--border);${chequingAccounts.length > 0 ? 'border-top:1px solid var(--border)' : ''}">Savings</div>`;
-      html += savingsAccounts.map(({a, i}) => renderAccountRow(a, i)).join('');
+    if (savings.length > 0) {
+      html += `<div style="padding:6px 20px 2px;font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;background:var(--surface2);border-bottom:1px solid var(--border)${chequing.length > 0 ? ';border-top:1px solid var(--border)' : ''}">Savings</div>`;
+      html += savings.map(a => renderAccountRow(a)).join('');
     }
   }
-
   body.innerHTML = html;
 }
 
-let bankEditIdx = null;
-let bankModalLogoData = null; // base64 for new logo upload
+let bankEditId = null;   // stable account id (string) for the account being edited
+let bankModalLogoData = null;
 
 function previewBankLogo(input) {
   const file = input.files[0];
@@ -4275,7 +4297,7 @@ function previewBankLogo(input) {
 }
 
 function addBankAccount() {
-  bankEditIdx = null;
+  bankEditId = null;
   bankModalLogoData = null;
   document.getElementById('bank-modal-title').textContent = 'Add Bank Account';
   document.getElementById('bank-modal-name').value = '';
@@ -4290,13 +4312,20 @@ function addBankAccount() {
   setTimeout(() => document.getElementById('bank-modal-name').focus(), 150);
 }
 
-function editBankAccount(i) {
-  bankEditIdx = i;
+function editBankAccount(id) {
+  // id is the stable string id, not an array index
+  bankEditId = id;
   bankModalLogoData = null;
-  const acc = bankAccounts[i];
-  document.getElementById('bank-modal-title').textContent = 'Edit Account';
+  const acc = bankAccounts.find(a => a.id === id);
+  if (!acc) return;
+  // For savings: show the effective balance for the currently-viewed month
+  const effectiveBalance = acc.type === 'savings'
+    ? (getSavingsBalanceForMonth(acc.id, calYear, calMonth) ?? acc.balance)
+    : acc.balance;
+  document.getElementById('bank-modal-title').textContent = 'Edit Account'
+    + (acc.type === 'savings' ? ' — ' + MONTHS[calMonth] + ' ' + calYear : '');
   document.getElementById('bank-modal-name').value = acc.name;
-  document.getElementById('bank-modal-balance').value = acc.balance;
+  document.getElementById('bank-modal-balance').value = effectiveBalance;
   document.getElementById('bank-modal-asof').value = acc.asOf || '';
   document.getElementById('bank-modal-type').value = acc.type || 'chequing';
   document.getElementById('bank-modal-delete-btn').style.display = '';
@@ -4320,39 +4349,50 @@ function toggleBankModalType() {
 
 function saveBankModal() {
   const name    = document.getElementById('bank-modal-name').value.trim();
-  const balance = parseFloat(document.getElementById('bank-modal-balance').value) || 0;
+  const balance = parseFloat(document.getElementById('bank-modal-balance').value);
   const type    = document.getElementById('bank-modal-type').value || 'chequing';
   const asOf    = type === 'chequing' ? (document.getElementById('bank-modal-asof').value || '') : '';
   if (!name) { document.getElementById('bank-modal-name').focus(); return; }
+  const safeBalance = isNaN(balance) ? 0 : balance;
   pushUndo();
 
-  // Build object; preserve existing logo if no new upload
-  const existing = bankEditIdx !== null ? bankAccounts[bankEditIdx] : null;
+  const existing = bankEditId !== null ? bankAccounts.find(a => a.id === bankEditId) : null;
   const logo = bankModalLogoData || (existing ? existing.logo : null) || null;
+  if (logo) LOGOS[name.split(' ')[0].toLowerCase()] = logo;
 
-  // Also register logo in LOGOS keyed by first word of name for calendar use
-  if (logo) {
-    const logoKey = name.split(' ')[0].toLowerCase();
-    LOGOS[logoKey] = logo;
-  }
-
-  const obj = { name, balance, type, asOf, ...(logo ? { logo } : {}) };
-
-  if (bankEditIdx !== null) {
-    Object.assign(bankAccounts[bankEditIdx], obj);
+  if (bankEditId !== null) {
+    // Editing existing account
+    const acc = bankAccounts.find(a => a.id === bankEditId);
+    if (!acc) return;
+    acc.name = name;
+    acc.type = type;
+    acc.asOf = asOf;
+    if (logo) acc.logo = logo;
     if (type === 'savings') {
-      const monthData = ensureMonthBankAccounts(calYear, calMonth);
-      monthData[bankEditIdx] = { ...obj };
+      // Write balance ONLY into this month — keyed by stable account id
+      setSavingsBalanceForMonth(acc.id, calYear, calMonth, safeBalance);
+      acc.balance = 0; // base is always 0; per-month snapshots hold truth
+    } else {
+      acc.balance = safeBalance;
     }
   } else {
-    bankAccounts.push(obj);
+    // New account
+    const id = 'bank_' + Date.now();
+    const baseObj = {
+      id, name, type,
+      asOf: type === 'savings' ? '' : asOf,
+      balance: type === 'savings' ? 0 : safeBalance,
+      ...(logo ? { logo } : {})
+    };
+    bankAccounts.push(baseObj);
     if (type === 'savings') {
-      ensureMonthBankAccounts(calYear, calMonth).push({ ...obj });
+      setSavingsBalanceForMonth(id, calYear, calMonth, safeBalance);
     }
   }
+
   document.getElementById('bank-modal').classList.remove('open');
   renderBankAccounts();
-  renderCalendar(); // refresh footer
+  renderCalendar();
   updateSummary();
 }
 
@@ -4361,23 +4401,26 @@ function closeBankModal(e) {
   document.getElementById('bank-modal').classList.remove('open');
 }
 
-function deleteBankAccount(i) {
-  bankAccounts.splice(i, 1);
-  Object.keys(monthlyBankAccounts).forEach(k => {
-    if (monthlyBankAccounts[k][i] !== undefined) monthlyBankAccounts[k].splice(i, 1);
-  });
+function deleteBankAccount(id) {
+  const idx = bankAccounts.findIndex(a => a.id === id);
+  if (idx === -1) return;
+  bankAccounts.splice(idx, 1);
+  // Remove all monthly snapshots for this account id
+  Object.keys(monthlyBankAccounts).forEach(k => { delete monthlyBankAccounts[k][id]; });
   document.getElementById('bank-modal').classList.remove('open');
   renderBankAccounts();
   renderCalendar();
   updateSummary();
 }
 
-function confirmDeleteBankAccount(i) {
-  const name = bankAccounts[i] ? bankAccounts[i].name : 'this account';
+function confirmDeleteBankAccount(id) {
+  const acc = bankAccounts.find(a => a.id === id);
+  const name = acc ? acc.name : 'this account';
   if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
   pushUndo();
-  deleteBankAccount(i);
+  deleteBankAccount(id);
 }
+
 
 
 
@@ -6612,6 +6655,7 @@ function confirmReset() {
 // ─── INIT ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   loadState();
+  ensureBankIds();
   loadSettings();
   updateMonthLabel();
   renderIncome();
@@ -6943,7 +6987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <button class="btn-secondary" onclick="closeBankModal()">Cancel</button>
     </div>
     <div id="bank-modal-delete-btn" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-      <button onclick="confirmDeleteBankAccount(bankEditIdx)" style="width:100%;padding:10px;background:transparent;border:1px solid var(--expense-red);color:var(--expense-red);border-radius:8px;font-family:var(--font-sans);font-size:0.9286em;cursor:pointer;transition:all .15s" onmouseenter="this.style.background='rgba(255,91,122,.1)'" onmouseleave="this.style.background='transparent'">
+      <button onclick="confirmDeleteBankAccount(bankEditId)" style="width:100%;padding:10px;background:transparent;border:1px solid var(--expense-red);color:var(--expense-red);border-radius:8px;font-family:var(--font-sans);font-size:0.9286em;cursor:pointer;transition:all .15s" onmouseenter="this.style.background='rgba(255,91,122,.1)'" onmouseleave="this.style.background='transparent'">
         Delete Account
       </button>
     </div>
