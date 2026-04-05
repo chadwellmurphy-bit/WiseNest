@@ -236,41 +236,99 @@
     cursor: pointer;
     display: flex;
     align-items: center;
+    gap: 4px;
     transition: all .15s;
+    user-select: none;
   }
   .year-btn:hover { border-color: var(--border); background: var(--surface2); color: var(--accent); }
 
-  .year-dropdown {
+  /* ── Year dial ── */
+  .year-dial-wrap {
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 6px;
+    border-radius: 14px;
+    z-index: 200;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5);
     display: none;
     flex-direction: column;
-    gap: 2px;
-    z-index: 200;
-    min-width: 100px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    align-items: center;
+    padding: 10px 6px;
+    width: 96px;
+    touch-action: none;
   }
-  .year-dropdown.open { display: flex; }
-  .year-option {
-    font-family:var(--font-serif);
-    font-size: 1em;
-    letter-spacing: -0.01em;
+  .year-dial-wrap.open { display: flex; }
+  .year-dial-viewport {
+    width: 100%;
+    height: 180px;
+    overflow: hidden;
+    position: relative;
+    cursor: ns-resize;
+  }
+  .year-dial-viewport::before,
+  .year-dial-viewport::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 54px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .year-dial-viewport::before { top: 0;    background: linear-gradient(to bottom, var(--surface), transparent); }
+  .year-dial-viewport::after  { bottom: 0; background: linear-gradient(to top,   var(--surface), transparent); }
+  .year-dial-selected-bar {
+    position: absolute;
+    left: 6px; right: 6px;
+    top: 50%; transform: translateY(-50%);
+    height: 36px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .year-dial-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform .15s ease;
+  }
+  .year-dial-item {
+    height: 36px;
+    line-height: 36px;
+    font-family: var(--font-serif);
+    font-size: 1.05em;
     color: var(--muted);
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    padding: 7px 14px;
-    cursor: pointer;
     text-align: center;
-    transition: all .12s;
+    width: 100%;
+    transition: color .1s, font-size .1s;
+    z-index: 3;
+    position: relative;
+    pointer-events: none;
   }
-  .year-option:hover { background: var(--surface2); color: var(--text); }
-  .year-option.active { color: var(--accent); font-weight: 600; background: var(--surface2); }
+  .year-dial-item.selected { color: var(--accent); font-weight: 600; font-size: 1.15em; }
+  .year-dial-arrows {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .year-dial-arrow {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--muted);
+    font-size: 1.1em;
+    width: 34px; height: 28px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: color .12s, border-color .12s;
+  }
+  .year-dial-arrow:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Hidden nav badge ── */
+  .nav-badge.badge-hidden { visibility: hidden; }
 
   /* ── PAGES ──────────────────────────────────────────────── */
   .page { display: none; padding: 28px; }
@@ -1328,9 +1386,28 @@
     display: flex; flex-direction: column;
     transform: translateX(100%);
     transition: transform .28s cubic-bezier(.4,0,.2,1);
-    overflow-y: auto;
+    overflow: hidden;
   }
   .settings-overlay.open .settings-drawer { transform: none; }
+
+  /* Settings panels — slide left/right */
+  .settings-panels {
+    display: flex;
+    width: 300%;
+    flex: 1;
+    transition: transform .28s cubic-bezier(.4,0,.2,1);
+    overflow: hidden;
+  }
+  .settings-panels.show-sub-sidepanel { transform: translateX(-33.333%); }
+  .settings-panels.show-sub-display   { transform: translateX(-66.666%); }
+  .settings-panel {
+    width: 33.333%;
+    flex-shrink: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
   .settings-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
@@ -1344,12 +1421,30 @@
     transition: all .15s;
   }
   .settings-close:hover { color: var(--text); border-color: var(--text); }
+  .settings-back {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); height: 30px; padding: 0 10px;
+    border-radius: 6px; cursor: pointer; font-size: 0.8571em;
+    display: flex; align-items: center; gap: 5px;
+    transition: all .15s; white-space: nowrap;
+  }
+  .settings-back:hover { color: var(--text); border-color: var(--text); }
   .settings-body { padding: 20px 24px; flex: 1; }
   .settings-group { margin-bottom: 28px; }
   .settings-group-label {
     font-family:var(--font-mono);
     font-size: 0.7143em; color: var(--muted);
     text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px;
+  }
+  /* Tappable nav row that goes to a sub-page */
+  .settings-nav-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: color .15s;
+  }
+  .settings-nav-row:hover .setting-label { color: var(--accent); }
+  .settings-nav-row .chevron {
+    color: var(--muted); font-size: 1em; flex-shrink: 0;
   }
   .setting-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -1816,6 +1911,12 @@
       <span class="nav-badge" id="nav-badge-bankaccounts">$0</span>
     </button>
 
+    <button class="nav-item" onclick="navTo('mortgage')" id="nav-mortgage">
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7L8 1l7 6v7a1 1 0 01-1 1H2a1 1 0 01-1-1V7z"/><path d="M5 15V9h6v6"/></svg></span>
+      Mortgage
+      <span class="nav-badge" id="nav-badge-mortgage">--</span>
+    </button>
+
     <button class="nav-item" onclick="navTo('creditcards')" id="nav-creditcards">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5"></rect><line x1="1" y1="7" x2="15" y2="7"></line><line x1="4" y1="11" x2="6" y2="11"></line></svg></span>
       Credit Cards
@@ -1870,12 +1971,22 @@
           <span id="current-month">Mar</span>
           <button id="next-month">→</button>
         </div>
-        <!-- Year picker — sits right next to month toggle -->
+        <!-- Year picker — dial -->
         <div style="position:relative;">
-          <button class="year-btn" id="year-btn" onclick="toggleYearDropdown()">
+          <button class="year-btn" id="year-btn" onclick="toggleYearDial()">
             <span id="year-display">2026</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4l3 3 3-3"/></svg>
           </button>
-          <div class="year-dropdown" id="year-dropdown"><button class="year-option" data-yr="2020">2020</button><button class="year-option" data-yr="2021">2021</button><button class="year-option" data-yr="2022">2022</button><button class="year-option" data-yr="2023">2023</button><button class="year-option" data-yr="2024">2024</button><button class="year-option" data-yr="2025">2025</button><button class="year-option active" data-yr="2026">2026</button><button class="year-option" data-yr="2027">2027</button><button class="year-option" data-yr="2028">2028</button><button class="year-option" data-yr="2029">2029</button><button class="year-option" data-yr="2030">2030</button></div>
+          <div class="year-dial-wrap" id="year-dial-wrap">
+            <div class="year-dial-viewport" id="year-dial-viewport">
+              <div class="year-dial-selected-bar"></div>
+              <div class="year-dial-list" id="year-dial-list"></div>
+            </div>
+            <div class="year-dial-arrows">
+              <button class="year-dial-arrow" onclick="dialStep(-1)">▲</button>
+              <button class="year-dial-arrow" onclick="dialStep(+1)">▼</button>
+            </div>
+          </div>
         </div>
       </div>
       <button class="gear-btn" onclick="openSettings()" title="Settings">
@@ -1921,9 +2032,13 @@
       <div id="cash-asof-sub" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px"></div>
       <div class="bar-bg"><div class="bar-fill" id="cash-bar" style="width:0%; background: var(--income-green)"></div></div>
     </div>
+    <div class="stat-card" style="border-color: rgba(91,138,255,0.3)">
+      <div class="label">Mortgage Renewal</div>
+      <div class="value" id="mtg-renewal-value" style="color:#5b8aff">--</div>
+      <div class="sub" id="mtg-renewal-sub">months until term end</div>
+      <div class="bar-bg"><div class="bar-fill" id="mtg-renewal-bar" style="width:0%;background:#5b8aff"></div></div>
     </div>
-
-    <!-- Summary extra: donut + balance bar -->
+    </div>
     <div class="main-grid" style="margin-top:24px">
       <div class="left-col">
         <div class="chart-section">
@@ -2912,6 +3027,24 @@
     </div>
   </div><!-- /page-bankaccounts -->
 
+  <!-- ══ PAGE: MORTGAGE ════════════════════════════════════════ -->
+  <div class="page" id="page-mortgage">
+    <div class="section" id="mortgage-panel">
+      <div class="section-header">
+        <div class="section-title">
+          <div class="section-dot" style="background: #5b8aff"></div>
+          Mortgage
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="icon-btn" onclick="openMortgageEdit()" title="Edit mortgage details" style="opacity:1;width:28px;height:28px">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div id="mortgage-body"></div>
+    </div>
+  </div><!-- /page-mortgage -->
+
   <!-- ══ PAGE: CALENDAR ════════════════════════════════════ -->
   <div class="page" id="page-calendar">
   <div class="section" id="calendar-section" style="margin-top:0">
@@ -3089,6 +3222,28 @@ const bankAccounts = [
 let monthlyBankAccounts = {};
 // MONTHLY_BANK_END
 
+// MORTGAGE_START
+let mortgageData = {
+  lender: 'First National #1378091',
+  originalAmount: 255521.25,
+  balance: 241890.99,
+  piPayment: 1535.96,
+  taxPayment: 261.79,
+  rate: 5.34,
+  rateType: 'Fixed',
+  termEnd: '2028-08-21',
+  termLengthYears: 5,
+  termRemainingYears: 2,
+  termRemainingMonths: 5,
+  termCompletedYears: 2,
+  termCompletedMonths: 7,
+  originalAmortYears: 25,
+  remainingAmortYears: 22,
+  remainingAmortMonths: 5,
+  asOf: '2026-04-01'
+};
+// MORTGAGE_END
+
 function loadState() {
   try {
     // Try multiple keys so data survives filename/URL changes
@@ -3124,6 +3279,7 @@ function loadState() {
       });
     }
     if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
+    if (saved.mortgageData) Object.assign(mortgageData, saved.mortgageData);
 
     // Fill in any missing amounts from baked defaults
     budget.expenses.forEach(e => {
@@ -3159,6 +3315,7 @@ function buildSavePayload() {
     ccActualSpend,
     bankAccountsData: bankAccounts,
     monthlyBankAccounts,
+    mortgageData,
   };
 }
 
@@ -3258,7 +3415,7 @@ function saveGistConfig() {
   loadFromGist().then(ok => {
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
+      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
       setSyncStatus('ok', '✓ Logged in');
     } else {
       setSyncStatus('error', 'Could not load — check your token and ID');
@@ -3286,7 +3443,7 @@ async function handlePull() {
   const ok = await loadFromGist();
   if (ok) {
     renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-    renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
+    renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
     setSyncStatus('ok', '✓ Syncing...');
     setTimeout(() => setSyncStatus('idle'), 2500);
   } else {
@@ -4134,6 +4291,7 @@ function updateSummary() {
     const maxVal = Math.max(totalCash, totalDebtVal, 1);
     cashBarEl.style.width = Math.min(100, Math.round((totalCash / maxVal) * 100)) + '%';
   }
+  updateMortgageRenewalCard();
 }
 
 function updateIncome(id, val) {
@@ -4445,6 +4603,7 @@ function captureState() {
     ccActualSpend:   ccActualSpend,
     bankAccounts:    bankAccounts,
     monthlyBankAccounts: monthlyBankAccounts,
+    mortgageData:    JSON.parse(JSON.stringify(mortgageData)),
   });
 }
 
@@ -4488,7 +4647,10 @@ function performUndo() {
     Object.keys(monthlyBankAccounts).forEach(k => delete monthlyBankAccounts[k]);
     Object.assign(monthlyBankAccounts, snap.monthlyBankAccounts);
   }
-  renderIncome(); renderExpenses(); renderDebts(); renderInvestments(); renderBankAccounts();
+  if (snap.mortgageData) {
+    Object.assign(mortgageData, snap.mortgageData);
+  }
+  renderIncome(); renderExpenses(); renderDebts(); renderInvestments(); renderBankAccounts(); renderMortgagePage();
   updateSummary(); renderCalendar();
   if (document.getElementById('page-creditcards').classList.contains('active')) renderCreditCardsPage();
   syncUndoBtn();
@@ -5164,6 +5326,259 @@ function deleteCat(name) {
 }
 
 
+
+
+// ─── MORTGAGE ────────────────────────────────────────────────────
+
+function renderMortgagePage() {
+  const el = document.getElementById('mortgage-body');
+  if (!el) return;
+  const m = mortgageData;
+  const original = m.originalAmount || 0;
+  const piPayment = m.piPayment || 0;
+  const taxPayment = m.taxPayment || 0;
+  const totalPayment = piPayment + taxPayment;
+  const rate = m.rate || 0;
+
+  // ── Project forward from the as-of snapshot to the currently viewed month ──
+  // Parse asOf date to get the snapshot year/month
+  const asOfDate = m.asOf ? new Date(m.asOf + 'T12:00:00') : new Date();
+  const asOfYr = asOfDate.getFullYear();
+  const asOfMo = asOfDate.getMonth(); // 0-based
+
+  // How many months have elapsed from asOf to the viewed calYear/calMonth?
+  const monthsElapsed = (calYear - asOfYr) * 12 + (calMonth - asOfMo);
+
+  // Project balance forward month by month using amortisation formula
+  let balance = m.balance || 0;
+  if (monthsElapsed !== 0 && rate > 0 && piPayment > 0) {
+    const r = (rate / 100) / 12;
+    // B(n) = B0*(1+r)^n - P*((1+r)^n - 1)/r
+    const factor = Math.pow(1 + r, monthsElapsed);
+    balance = balance * factor - piPayment * (factor - 1) / r;
+    balance = Math.max(0, balance);
+  }
+
+  // Project term remaining/completed
+  const baseRemYrs = m.termRemainingYears || 0;
+  const baseRemMos = m.termRemainingMonths || 0;
+  const baseCompYrs = m.termCompletedYears || 0;
+  const baseCompMos = m.termCompletedMonths || 0;
+  let totalRemMos = baseRemYrs * 12 + baseRemMos - monthsElapsed;
+  let totalCompMos = baseCompYrs * 12 + baseCompMos + monthsElapsed;
+  totalRemMos = Math.max(0, totalRemMos);
+  const termRemYrs = Math.floor(totalRemMos / 12);
+  const termRemMos = totalRemMos % 12;
+  const termCompYrs = Math.floor(totalCompMos / 12);
+  const termCompMos = totalCompMos % 12;
+  const termRemaining = totalRemMos <= 0 ? 'Term expired'
+    : (termRemYrs > 0 ? termRemYrs + ' yr' + (termRemYrs !== 1 ? 's' : '') + ', ' : '') + termRemMos + ' mo' + (termRemMos !== 1 ? 's' : '');
+  const termCompleted = (termCompYrs > 0 ? termCompYrs + ' yr' + (termCompYrs !== 1 ? 's' : '') + ', ' : '') + termCompMos + ' mo' + (termCompMos !== 1 ? 's' : '');
+
+  // Project amortisation remaining
+  const baseAmortMos = (m.remainingAmortYears || 0) * 12 + (m.remainingAmortMonths || 0);
+  let projAmortMos = Math.max(0, baseAmortMos - monthsElapsed);
+  const remAmortYrs = Math.floor(projAmortMos / 12);
+  const remAmortMos = projAmortMos % 12;
+  const remainAmort = projAmortMos <= 0 ? 'Paid off'
+    : remAmortYrs + ' yr' + (remAmortYrs !== 1 ? 's' : '') + ', ' + remAmortMos + ' mo' + (remAmortMos !== 1 ? 's' : '');
+
+  // Days until renewal (always live from today)
+  let daysUntilRenewal = null;
+  if (m.termEnd) {
+    const now = new Date();
+    const end = new Date(m.termEnd + 'T12:00:00');
+    daysUntilRenewal = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+  }
+
+  const paidOff = original > 0 ? Math.min((original - balance) / original, 1) : 0;
+  const paidPct = Math.round(paidOff * 100);
+
+  // Monthly interest/principal split for the projected balance
+  const monthlyInterest = balance > 0 && rate > 0 ? balance * (rate / 100) / 12 : 0;
+  const monthlyPrincipal = piPayment > monthlyInterest ? piPayment - monthlyInterest : 0;
+
+  const renewalColor = daysUntilRenewal !== null && daysUntilRenewal <= 180 ? 'var(--expense-red)'
+    : daysUntilRenewal !== null && daysUntilRenewal <= 365 ? '#ffb547' : '#5b8aff';
+  const termEndFormatted = m.termEnd
+    ? new Date(m.termEnd + 'T12:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
+
+  el.innerHTML = `
+    <!-- Balance progress -->
+    <div style="padding:20px 20px 0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Principal Balance</div>
+          <div style="font-family:var(--font-serif);font-size:2em;letter-spacing:-.03em;color:var(--text)">${fmtCurrency(balance)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Paid Off</div>
+          <div style="font-family:var(--font-serif);font-size:1.4em;color:var(--income-green)">${paidPct}%</div>
+        </div>
+      </div>
+      <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;width:${paidPct}%;background:linear-gradient(90deg,#5b8aff,var(--income-green));border-radius:4px;transition:width .4s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);margin-bottom:16px">
+        <span>${fmtCurrency(original - balance)} paid of ${fmtCurrency(original)}</span>
+        <span>${m.lender || ''}</span>
+      </div>
+    </div>
+
+    <!-- Payment breakdown -->
+    <div style="border-top:1px solid var(--border);padding:16px 20px">
+      <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Monthly Payment Breakdown</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+        <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Total</div>
+          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:#5b8aff">${fmtCurrency(totalPayment)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">~Principal</div>
+          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--income-green)">${fmtCurrency(monthlyPrincipal)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">~Interest</div>
+          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--expense-red)">${fmtCurrency(monthlyInterest)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Prop. Tax</div>
+          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--muted)">${fmtCurrency(taxPayment)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Current term -->
+    <div style="border-top:1px solid var(--border);padding:16px 20px">
+      <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Current Term</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Rate</div>
+          <div style="font-size:1.1em;font-weight:500">${rate}% <span style="font-family:var(--font-mono);font-size:0.7em;color:var(--muted)">${m.rateType || 'Fixed'}</span></div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Term Renewal</div>
+          <div style="font-size:0.9em;font-weight:500;color:${renewalColor}">${termEndFormatted}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Term Remaining</div>
+          <div style="font-size:0.9em;font-weight:500">${termRemaining}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Term Completed</div>
+          <div style="font-size:0.9em;font-weight:500">${termCompleted}</div>
+        </div>
+      </div>
+      ${daysUntilRenewal !== null && daysUntilRenewal <= 365 ? `
+      <div style="background:${daysUntilRenewal <= 180 ? 'rgba(255,100,100,.12)' : 'rgba(255,181,71,.12)'};border:1px solid ${renewalColor};border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:1.1em">${daysUntilRenewal <= 180 ? '🔴' : '🟡'}</span>
+        <span style="font-family:var(--font-mono);font-size:0.7857em;color:${renewalColor}">Term renewal in <strong>${daysUntilRenewal}</strong> days — start shopping rates soon!</span>
+      </div>` : ''}
+    </div>
+
+    <!-- Amortization -->
+    <div style="border-top:1px solid var(--border);padding:16px 20px">
+      <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Amortization</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Remaining (est.)</div>
+          <div style="font-size:0.9em;font-weight:500">${remainAmort || '—'}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Original</div>
+          <div style="font-size:0.9em;font-weight:500">${m.originalAmortYears || '—'} years</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Annual summary -->
+    <div style="border-top:1px solid var(--border);padding:16px 20px 20px">
+      <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Annual Summary</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Annual Payments</div>
+          <div style="font-size:0.9em;font-weight:500">${fmtCurrency(totalPayment * 12)}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">~Annual Interest</div>
+          <div style="font-size:0.9em;font-weight:500;color:var(--expense-red)">${fmtCurrency(monthlyInterest * 12)}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Annual Prop. Tax</div>
+          <div style="font-size:0.9em;font-weight:500">${fmtCurrency(taxPayment * 12)}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Balance As-Of</div>
+          <div style="font-size:0.9em;color:var(--muted)">${m.asOf ? new Date(m.asOf + 'T12:00:00').toLocaleDateString('en-CA', {year:'numeric',month:'short',day:'numeric'}) : '—'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Update nav badge
+  const badge = document.getElementById('nav-badge-mortgage');
+  if (badge) badge.textContent = fmtCurrency(balance);
+}
+
+function openMortgageEdit() {
+  const m = mortgageData;
+  document.getElementById('mtg-lender').value = m.lender || '';
+  document.getElementById('mtg-original').value = m.originalAmount || '';
+  document.getElementById('mtg-balance').value = m.balance || '';
+  document.getElementById('mtg-pi').value = m.piPayment || '';
+  document.getElementById('mtg-tax').value = m.taxPayment || '';
+  document.getElementById('mtg-rate').value = m.rate || '';
+  document.getElementById('mtg-ratetype').value = m.rateType || 'Fixed';
+  document.getElementById('mtg-termend').value = m.termEnd || '';
+  document.getElementById('mtg-term-len').value = m.termLengthYears || '';
+  document.getElementById('mtg-term-rem-yrs').value = m.termRemainingYears !== undefined ? m.termRemainingYears : '';
+  document.getElementById('mtg-term-rem-mos').value = m.termRemainingMonths !== undefined ? m.termRemainingMonths : '';
+  document.getElementById('mtg-term-comp-yrs').value = m.termCompletedYears !== undefined ? m.termCompletedYears : '';
+  document.getElementById('mtg-term-comp-mos').value = m.termCompletedMonths !== undefined ? m.termCompletedMonths : '';
+  document.getElementById('mtg-amort-orig').value = m.originalAmortYears || '';
+  document.getElementById('mtg-amort-rem-yrs').value = m.remainingAmortYears !== undefined ? m.remainingAmortYears : '';
+  document.getElementById('mtg-amort-rem-mos').value = m.remainingAmortMonths !== undefined ? m.remainingAmortMonths : '';
+  document.getElementById('mtg-asof').value = m.asOf || '';
+  document.getElementById('mortgage-modal').classList.add('open');
+}
+
+function closeMortgageModal(e) {
+  if (!e || e.target === document.getElementById('mortgage-modal')) {
+    document.getElementById('mortgage-modal').classList.remove('open');
+  }
+}
+
+function saveMortgageModal() {
+  pushUndo();
+  mortgageData.lender           = document.getElementById('mtg-lender').value.trim();
+  mortgageData.originalAmount   = parseFloat(document.getElementById('mtg-original').value) || 0;
+  mortgageData.balance          = parseFloat(document.getElementById('mtg-balance').value) || 0;
+  mortgageData.piPayment        = parseFloat(document.getElementById('mtg-pi').value) || 0;
+  mortgageData.taxPayment       = parseFloat(document.getElementById('mtg-tax').value) || 0;
+  mortgageData.rate             = parseFloat(document.getElementById('mtg-rate').value) || 0;
+  mortgageData.rateType         = document.getElementById('mtg-ratetype').value;
+  mortgageData.termEnd             = document.getElementById('mtg-termend').value;
+  mortgageData.termLengthYears     = parseInt(document.getElementById('mtg-term-len').value) || 5;
+  mortgageData.termRemainingYears  = parseInt(document.getElementById('mtg-term-rem-yrs').value) || 0;
+  mortgageData.termRemainingMonths = parseInt(document.getElementById('mtg-term-rem-mos').value) || 0;
+  mortgageData.termCompletedYears  = parseInt(document.getElementById('mtg-term-comp-yrs').value) || 0;
+  mortgageData.termCompletedMonths = parseInt(document.getElementById('mtg-term-comp-mos').value) || 0;
+  mortgageData.originalAmortYears   = parseInt(document.getElementById('mtg-amort-orig').value) || 0;
+  mortgageData.remainingAmortYears  = parseInt(document.getElementById('mtg-amort-rem-yrs').value) || 0;
+  mortgageData.remainingAmortMonths = parseInt(document.getElementById('mtg-amort-rem-mos').value) || 0;
+  mortgageData.asOf             = document.getElementById('mtg-asof').value;
+  document.getElementById('mortgage-modal').classList.remove('open');
+  renderMortgagePage();
+  const notif = document.getElementById('notif');
+  if (notif) { notif.textContent = 'Mortgage updated ✓'; notif.classList.add('show'); setTimeout(() => { notif.classList.remove('show'); notif.textContent = 'Saved ✓'; }, 2000); }
+}
+
+function fmtCurrency(n) {
+  if (typeof n !== 'number' || isNaN(n)) return '$0';
+  return '$' + n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+
 // ─── CALENDAR ────────────────────────────────────────────────────
 let calYear    = new Date().getFullYear();
 let calMonth   = new Date().getMonth(); // 0-based
@@ -5797,10 +6212,9 @@ function updateMonthLabel() {
   const nextBtn = document.getElementById('next-month');
   if (prevBtn) prevBtn.disabled = (calMonth === 0);
   if (nextBtn) nextBtn.disabled = (calMonth === 11);
-  // Refresh dropdown active state if open
-  document.querySelectorAll('.year-option').forEach(o => {
-    o.classList.toggle('active', +o.dataset.yr === calYear);
-  });
+  // Sync dial if open
+  const dialWrap = document.getElementById('year-dial-wrap');
+  if (dialWrap && dialWrap.classList.contains('open')) dialScrollTo(calYear, true);
 }
 
 function stepMonth(delta) {
@@ -5824,6 +6238,9 @@ function stepMonth(delta) {
   if (document.getElementById('page-creditcards') && document.getElementById('page-creditcards').classList.contains('active')) {
     renderCreditCardsPage();
   }
+  if (document.getElementById('page-mortgage') && document.getElementById('page-mortgage').classList.contains('active')) {
+    renderMortgagePage();
+  }
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
       const el = document.getElementById(id);
@@ -5837,57 +6254,140 @@ function stepMonth(delta) {
 document.getElementById('prev-month').onclick = () => stepMonth(-1);
 document.getElementById('next-month').onclick = () => stepMonth(+1);
 
-// ─── YEAR PICKER ──────────────────────────────────────────────────
-(function initYearPicker() {
-  const YEAR_RANGE = [2020, 2030]; // adjust as needed
-  const dropdown = document.getElementById('year-dropdown');
-  dropdown.innerHTML = '';
-  for (let y = YEAR_RANGE[0]; y <= YEAR_RANGE[1]; y++) {
-    const btn = document.createElement('button');
-    btn.className = 'year-option' + (y === calYear ? ' active' : '');
-    btn.textContent = y;
-    btn.dataset.yr = y;
-    btn.onclick = () => selectYear(y);
-    dropdown.appendChild(btn);
+// ─── YEAR DIAL ──────────────────────────────────────────────────
+const DIAL_MIN = 2020;
+const DIAL_MAX = 2055;
+const ITEM_H   = 36; // px — must match CSS
+
+function buildDialList() {
+  const list = document.getElementById('year-dial-list');
+  if (!list) return;
+  list.innerHTML = '';
+  // Pad top/bottom so selected year can sit centred
+  const PAD = 2;
+  for (let i = 0; i < PAD; i++) {
+    const spacer = document.createElement('div');
+    spacer.className = 'year-dial-item';
+    list.appendChild(spacer);
   }
-  // Close dropdown when clicking outside
-  document.addEventListener('click', e => {
-    const wrap = document.getElementById('year-btn');
-    const dd   = document.getElementById('year-dropdown');
-    if (wrap && !wrap.contains(e.target) && !dd.contains(e.target)) {
-      closeYearDropdown();
-    }
+  for (let y = DIAL_MIN; y <= DIAL_MAX; y++) {
+    const item = document.createElement('div');
+    item.className = 'year-dial-item' + (y === calYear ? ' selected' : '');
+    item.textContent = y;
+    item.dataset.yr = y;
+    list.appendChild(item);
+  }
+  for (let i = 0; i < PAD; i++) {
+    const spacer = document.createElement('div');
+    spacer.className = 'year-dial-item';
+    list.appendChild(spacer);
+  }
+  dialScrollTo(calYear, false);
+}
+
+function dialScrollTo(yr, animate) {
+  const list = document.getElementById('year-dial-list');
+  if (!list) return;
+  const idx = yr - DIAL_MIN; // 0-based index into real items (after PAD)
+  const PAD = 2;
+  const offset = -(idx + PAD) * ITEM_H;
+  list.style.transition = animate ? 'transform .18s ease' : 'none';
+  list.style.transform = `translateY(${offset}px)`;
+  // Highlight selected
+  list.querySelectorAll('.year-dial-item').forEach(el => {
+    el.classList.toggle('selected', +el.dataset.yr === yr);
   });
-  // Set initial arrow states
-  updateMonthLabel();
-})();
+  const yd = document.getElementById('year-display');
+  if (yd) yd.textContent = yr;
+}
 
-function toggleYearDropdown() {
-  const btn = document.getElementById('year-btn');
-  const dd  = document.getElementById('year-dropdown');
-  const open = dd.classList.contains('open');
-  if (open) {
-    closeYearDropdown();
-  } else {
-    dd.classList.add('open');
-    btn.classList.add('open');
-    // Scroll active year into view
-    const active = dd.querySelector('.year-option.active');
-    if (active) active.scrollIntoView({ block: 'nearest' });
+function dialStep(delta) {
+  const newYr = Math.min(DIAL_MAX, Math.max(DIAL_MIN, calYear + delta));
+  if (newYr === calYear) return;
+  selectYear(newYr);
+  dialScrollTo(newYr, true);
+}
+
+function toggleYearDial() {
+  const wrap = document.getElementById('year-dial-wrap');
+  const btn  = document.getElementById('year-btn');
+  if (!wrap) return;
+  const isOpen = wrap.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  if (isOpen) {
+    buildDialList();
+    initDialDrag();
   }
 }
 
-function closeYearDropdown() {
-  document.getElementById('year-dropdown').classList.remove('open');
-  document.getElementById('year-btn').classList.remove('open');
+function closeYearDial() {
+  const wrap = document.getElementById('year-dial-wrap');
+  const btn  = document.getElementById('year-btn');
+  if (wrap) wrap.classList.remove('open');
+  if (btn)  btn.classList.remove('open');
 }
+
+// Legacy stubs so any old refs don't throw
+function toggleYearDropdown() { toggleYearDial(); }
+function closeYearDropdown()   { closeYearDial(); }
+
+let _dialDragInit = false;
+function initDialDrag() {
+  if (_dialDragInit) return;
+  _dialDragInit = true;
+  const vp = document.getElementById('year-dial-viewport');
+  if (!vp) return;
+
+  let startY = 0, startYr = calYear, dragging = false;
+
+  function onStart(e) {
+    dragging = true;
+    startY  = e.touches ? e.touches[0].clientY : e.clientY;
+    startYr = calYear;
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    const delta = Math.round((startY - y) / ITEM_H);
+    const newYr = Math.min(DIAL_MAX, Math.max(DIAL_MIN, startYr + delta));
+    if (newYr !== calYear) {
+      selectYear(newYr);
+      dialScrollTo(newYr, false);
+    }
+    e.preventDefault();
+  }
+  function onEnd() { dragging = false; }
+
+  vp.addEventListener('mousedown',  onStart, { passive: false });
+  vp.addEventListener('touchstart', onStart, { passive: false });
+  window.addEventListener('mousemove',  onMove, { passive: false });
+  window.addEventListener('touchmove',  onMove, { passive: false });
+  window.addEventListener('mouseup',  onEnd);
+  window.addEventListener('touchend', onEnd);
+
+  // Wheel scroll
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 1 : -1;
+    dialStep(delta);
+  }, { passive: false });
+}
+
+// Close dial when clicking outside
+document.addEventListener('click', e => {
+  const btn  = document.getElementById('year-btn');
+  const wrap = document.getElementById('year-dial-wrap');
+  if (btn && wrap && !btn.contains(e.target) && !wrap.contains(e.target)) {
+    closeYearDial();
+  }
+});
 
 function selectYear(yr) {
   calYear = yr;
-  // Clamp month to valid range (Jan–Dec already valid, just re-render)
   calDay    = 1;
   calWeekOf = new Date(calYear, calMonth, 1);
-  closeYearDropdown();
+  closeYearDial();
   updateMonthLabel();
   updateSummary();
   renderCalendar();
@@ -5900,6 +6400,9 @@ function selectYear(yr) {
   }
   if (document.getElementById('page-creditcards') && document.getElementById('page-creditcards').classList.contains('active')) {
     renderCreditCardsPage();
+  }
+  if (document.getElementById('page-mortgage') && document.getElementById('page-mortgage').classList.contains('active')) {
+    renderMortgagePage();
   }
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
@@ -5916,7 +6419,8 @@ function selectYear(yr) {
 const PAGE_TITLES = {
   summary: 'Summary', income: 'Money In', expenses: 'Money Out',
   debt: 'Debt', investments: 'Investments', calendar: 'Calendar',
-  creditcards: 'Credit Cards', bankaccounts: 'Bank Accounts'
+  creditcards: 'Credit Cards', bankaccounts: 'Bank Accounts',
+  mortgage: 'Mortgage'
 };
 
 function navTo(page) {
@@ -5940,6 +6444,8 @@ function navTo(page) {
   if (page === 'creditcards') renderCreditCardsPage();
   // Trigger bank accounts render when switching to it
   if (page === 'bankaccounts') renderBankAccounts();
+  // Trigger mortgage render when switching to it
+  if (page === 'mortgage') renderMortgagePage();
   // Reopen section bodies after display change
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
@@ -5950,6 +6456,83 @@ function navTo(page) {
       }
     });
   }, 50);
+}
+
+// ─── BADGE VISIBILITY ────────────────────────────────────────────
+const BADGE_ITEMS = [
+  { key: 'income',       label: 'Money In' },
+  { key: 'expenses',     label: 'Money Out' },
+  { key: 'debt',         label: 'Debt' },
+  { key: 'invest',       label: 'Investments' },
+  { key: 'bankaccounts', label: 'Bank Accounts' },
+  { key: 'mortgage',     label: 'Mortgage' },
+  { key: 'creditcards',  label: 'Credit Cards' },
+];
+
+function applyBadgeVisibility() {
+  const hidden = appSettings.hiddenBadges || {};
+  BADGE_ITEMS.forEach(({ key }) => {
+    const el = document.getElementById('nav-badge-' + key);
+    if (el) el.classList.toggle('badge-hidden', !!hidden[key]);
+  });
+}
+
+function buildBadgeToggles() {
+  const container = document.getElementById('s-badge-toggles');
+  if (!container) return;
+  const hidden = appSettings.hiddenBadges || {};
+  container.innerHTML = '';
+  BADGE_ITEMS.forEach(({ key, label }) => {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    row.style.cssText = 'padding:6px 0';
+    row.innerHTML = `
+      <div class="setting-label" style="font-size:0.9em">${label}</div>
+      <label class="toggle" style="flex-shrink:0">
+        <input type="checkbox" ${!hidden[key] ? 'checked' : ''} onchange="toggleBadge('${key}',this.checked)">
+        <div class="toggle-track"></div>
+      </label>`;
+    container.appendChild(row);
+  });
+}
+
+function toggleBadge(key, visible) {
+  if (!appSettings.hiddenBadges) appSettings.hiddenBadges = {};
+  if (visible) {
+    delete appSettings.hiddenBadges[key];
+  } else {
+    appSettings.hiddenBadges[key] = true;
+  }
+  applyBadgeVisibility();
+  saveSettings();
+}
+
+// ─── MORTGAGE RENEWAL SUMMARY CARD ───────────────────────────────
+function updateMortgageRenewalCard() {
+  const valEl = document.getElementById('mtg-renewal-value');
+  const subEl = document.getElementById('mtg-renewal-sub');
+  const barEl = document.getElementById('mtg-renewal-bar');
+  if (!valEl) return;
+  if (!mortgageData || !mortgageData.termEnd) {
+    valEl.textContent = '—';
+    if (subEl) subEl.textContent = 'No term date set';
+    return;
+  }
+  const now  = new Date();
+  const end  = new Date(mortgageData.termEnd + 'T12:00:00');
+  const totalTermMos = (mortgageData.termLengthYears || 5) * 12;
+  const msLeft = end - now;
+  const mosLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24 * 30.44)));
+  const pct = totalTermMos > 0 ? Math.min(100, Math.round((1 - mosLeft / totalTermMos) * 100)) : 0;
+  const yrs = Math.floor(mosLeft / 12);
+  const mos = mosLeft % 12;
+  const label = mosLeft <= 0 ? 'Renew now!'
+    : yrs > 0 ? `${yrs}y ${mos}m` : `${mos} mo`;
+  const color = mosLeft <= 6 ? 'var(--expense-red)' : mosLeft <= 12 ? '#ffb547' : '#5b8aff';
+  valEl.textContent = label;
+  valEl.style.color = color;
+  if (subEl) subEl.textContent = mosLeft <= 0 ? 'Term has expired' : 'until term renewal';
+  if (barEl) { barEl.style.width = pct + '%'; barEl.style.background = color; }
 }
 
 function updateNavBadges() {
@@ -5974,6 +6557,8 @@ function updateNavBadges() {
     const totalBank = bankData.reduce((s, a) => s + a.balance, 0);
     el('nav-badge-bankaccounts').textContent = '$' + Math.round(totalBank).toLocaleString('en-CA');
   }
+  // Apply badge visibility
+  applyBadgeVisibility();
   // Also sync the summary balance bars
   if (totalIncome > 0) {
     const expPct = Math.min(100, Math.round((totalExpenses / totalIncome) * 100));
@@ -5995,14 +6580,17 @@ let appSettings = {
   weekStart:      0,
   dueSoon:        5,
   dueSoonEnabled: true,
-  fontSize:       'medium',
+  fontSize:       'large',
   fontStyle:      'sans',
-  rogersMode:     'pct',   // 'pct' | 'keep'
-  rogersPct:      50,      // % of leftover to allocate to Rogers
-  rogersKeep:     500,     // $ to keep aside (leftover - keep = Rogers budget)
+  rogersMode:     'pct',
+  rogersPct:      50,
+  rogersKeep:     500,
+  hiddenBadges:   {},   // { 'income': true, 'expenses': true, ... }
 };
 
 function openSettings() {
+  const panels = document.getElementById('settings-panels');
+  if (panels) panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
   syncSettingsUI();
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -6012,33 +6600,64 @@ function closeSettings() {
 function settingsOverlayClick(e) {
   if (e.target === document.getElementById('settings-overlay')) closeSettings();
 }
+function openSettingsSubPage(name) {
+  const panels = document.getElementById('settings-panels');
+  panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
+  panels.classList.add('show-sub-' + name);
+  if (name === 'sidepanel') buildBadgeToggles();
+  // Sync selects on display sub-page when opening it
+  if (name === 'display') syncSettingsUI();
+}
+function closeSettingsSubPage() {
+  const panels = document.getElementById('settings-panels');
+  panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
+}
 function syncSettingsUI() {
   const sel = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
   const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
-  sel('s-panel-mode',  appSettings.panelMode);
-  sel('s-theme',       appSettings.theme);
-  sel('s-density',     appSettings.density);
-  sel('s-cal-default', appSettings.calDefault);
-  sel('s-week-start',  appSettings.weekStart);
-  sel('s-due-soon',    appSettings.dueSoon);
-  sel('s-font-size',   appSettings.fontSize  || 'medium');
-  sel('s-font-style',  appSettings.fontStyle || 'sans');
+  sel('s-panel-mode',   appSettings.panelMode);
+  sel('s-theme',        appSettings.theme);        sel('s-theme-2',      appSettings.theme);
+  sel('s-density',      appSettings.density);      sel('s-density-2',    appSettings.density);
+  sel('s-cal-default',  appSettings.calDefault);
+  sel('s-week-start',   appSettings.weekStart);
+  sel('s-due-soon',     appSettings.dueSoon);
+  sel('s-font-size-2',  appSettings.fontSize  || 'large');
+  sel('s-font-style-2', appSettings.fontStyle || 'sans');
   chk('s-due-soon-enabled', appSettings.dueSoonEnabled !== false);
+  buildBadgeToggles();
 }
 function applySettings() {
-  // Read UI → store (guard: elements may not exist at init time)
-  const val = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  // Read UI → store. For mirrored fields, prefer whichever was just changed.
+  // Use a helper that checks both primary and -2 mirror ids.
+  const val  = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  const val2 = (id) => {
+    // Return the value from whichever element triggered the change (most recently changed)
+    // We read both and use the non-null one; if both exist prefer the -2 mirror
+    // (it's in the sub-page that's currently visible when the user changes it there)
+    const panels = document.getElementById('settings-panels');
+    const inSub  = panels && panels.classList.contains('show-sub-display');
+    const primary = val(id);
+    const mirror  = val(id + '-2');
+    if (inSub && mirror !== null) return mirror;
+    return primary;
+  };
   const chk = id => { const el = document.getElementById(id); return el ? el.checked : true; };
   if (val('s-panel-mode')  !== null) appSettings.panelMode  = val('s-panel-mode');
-  if (val('s-theme')       !== null) appSettings.theme      = val('s-theme');
-  if (val('s-density')     !== null) appSettings.density    = val('s-density');
+  const theme = val2('s-theme');       if (theme)   appSettings.theme     = theme;
+  const density = val2('s-density');   if (density) appSettings.density   = density;
   if (val('s-cal-default') !== null) appSettings.calDefault = val('s-cal-default');
   if (val('s-week-start')  !== null) appSettings.weekStart  = +val('s-week-start');
   if (val('s-due-soon')    !== null) appSettings.dueSoon    = +val('s-due-soon');
   const dseEl = document.getElementById('s-due-soon-enabled');
   if (dseEl !== null) appSettings.dueSoonEnabled = dseEl.checked;
-  if (val('s-font-size')   !== null) appSettings.fontSize   = val('s-font-size');
-  if (val('s-font-style')  !== null) appSettings.fontStyle  = val('s-font-style');
+  const fontSize  = val2('s-font-size');  if (fontSize)  appSettings.fontSize  = fontSize;
+  const fontStyle = val2('s-font-style'); if (fontStyle) appSettings.fontStyle = fontStyle;
+  // Keep mirrors in sync
+  const sel = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+  sel('s-theme',       appSettings.theme);      sel('s-theme-2',      appSettings.theme);
+  sel('s-density',     appSettings.density);    sel('s-density-2',    appSettings.density);
+  sel('s-font-size-2', appSettings.fontSize);
+  sel('s-font-style-2',appSettings.fontStyle);
   applySettingsToDOM(true);
 }
 
@@ -6579,8 +7198,12 @@ function applySettingsToDOM(rerender) {
   // Density
   document.body.classList.toggle('density-compact', appSettings.density === 'compact');
   // Typography — font size
-  const fontSizeMap = { small: '12px', medium: '14px', large: '16px', xlarge: '18px' };
-  document.documentElement.style.setProperty('--base-font-size', fontSizeMap[appSettings.fontSize] || '14px');
+  const fontSizeMap = {
+    medium: '14px', medium2: '15px',
+    large: '16px', large2: '17px',
+    xlarge: '18px', xlarge2: '20px', xxlarge: '22px'
+  };
+  document.documentElement.style.setProperty('--base-font-size', fontSizeMap[appSettings.fontSize] || '16px');
   // Typography — font style
   const fontStyleMap = {
     sans:   { sans: "'DM Sans', sans-serif",              mono: "'DM Sans', sans-serif",    serif: "'DM Sans', sans-serif" },
@@ -6605,6 +7228,7 @@ function applySettingsToDOM(rerender) {
   if (rPctInp)  rPctInp.value  = appSettings.rogersPct  ?? 50;
   if (rKeepInp) rKeepInp.value = appSettings.rogersKeep ?? 500;
   // Only re-render expenses when filter-related settings changed
+  applyBadgeVisibility();
   if (rerender) {
     renderExpenses();
     setTimeout(() => {
@@ -6665,6 +7289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderInvestments();
   renderBankAccounts();
   renderCreditCardsPage();
+  renderMortgagePage();
   updateSummary();
   renderCalendar();
   syncUndoBtn();
@@ -6691,7 +7316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ok = await loadFromGist();
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
+      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
       setSyncStatus('ok', '✓ Synced');
       setTimeout(() => setSyncStatus('idle'), 2500);
     } else {
@@ -6784,7 +7409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const ok = await loadFromGist();
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-        renderCreditCardsPage(); renderBankAccounts(); updateSummary(); renderCalendar();
+        renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
         label.textContent = '✓ Synced';
         setSyncStatus('ok', '✓ Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
@@ -7115,126 +7740,198 @@ document.addEventListener('DOMContentLoaded', async () => {
 <!-- ══ SETTINGS DRAWER ══════════════════════════════════════ -->
 <div class="settings-overlay" id="settings-overlay" onclick="settingsOverlayClick(event)">
   <div class="settings-drawer">
-    <div class="settings-head">
-      <h2>Settings</h2>
-      <button class="settings-close" onclick="closeSettings()">✕</button>
-    </div>
-    <div class="settings-body">
-      <div class="settings-group">
-        <div class="settings-group-label">Side Panel</div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Panel mode</div>
-            <div class="setting-sub">Fixed always-on or slide over</div>
+
+    <!-- ── MAIN settings page ── -->
+    <div class="settings-panels" id="settings-panels">
+      <div class="settings-panel" id="settings-panel-main">
+        <div class="settings-head">
+          <h2>Settings</h2>
+          <button class="settings-close" onclick="closeSettings()">✕</button>
+        </div>
+        <div class="settings-body">
+
+          <!-- Display — navigates to sub-page -->
+          <div class="settings-group">
+            <div class="settings-group-label">Appearance</div>
+            <div class="settings-nav-row" onclick="openSettingsSubPage('sidepanel')">
+              <div>
+                <div class="setting-label">Side Panel</div>
+                <div class="setting-sub">Panel mode, balances &amp; visibility</div>
+              </div>
+              <span class="chevron">›</span>
+            </div>
+            <div class="settings-nav-row" onclick="openSettingsSubPage('display')">
+              <div>
+                <div class="setting-label">Display &amp; Text</div>
+                <div class="setting-sub">Theme, density, font size &amp; style</div>
+              </div>
+              <span class="chevron">›</span>
+            </div>
           </div>
-          <select class="setting-select" id="s-panel-mode" onchange="applySettings()">
-            <option value="fixed">Fixed open</option>
-            <option value="slideover">Slide-over</option>
-          </select>
-        </div>
-      </div>
-      <div class="settings-group">
-        <div class="settings-group-label">Display</div>
-        <div class="setting-row">
-          <div><div class="setting-label">Theme</div></div>
-          <select class="setting-select" id="s-theme" onchange="applySettings()">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Row density</div>
-            <div class="setting-sub">Compact rows save space</div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Calendar</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Default view</div></div>
+              <select class="setting-select" id="s-cal-default" onchange="applySettings()">
+                <option value="month">Month</option>
+                <option value="week">Week</option>
+                <option value="day">Day</option>
+                <option value="year">Year</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Week starts on</div></div>
+              <select class="setting-select" id="s-week-start" onchange="applySettings()">
+                <option value="0">Sunday</option>
+                <option value="1">Monday</option>
+              </select>
+            </div>
           </div>
-          <select class="setting-select" id="s-density" onchange="applySettings()">
-            <option value="normal">Normal</option>
-            <option value="compact">Compact</option>
-          </select>
-        </div>
-      </div>
-      <div class="settings-group">
-        <div class="settings-group-label">Typography</div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Text size</div>
-            <div class="setting-sub">Base font size for the app</div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Highlights</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Due-soon warning</div>
+                <div class="setting-sub">Show ⏱ badge on payments due within N days</div>
+              </div>
+              <label class="toggle" style="flex-shrink:0">
+                <input type="checkbox" id="s-due-soon-enabled" checked="" onchange="applySettings()">
+                <div class="toggle-track"></div>
+              </label>
+            </div>
+            <div class="setting-row" id="s-due-soon-row">
+              <div>
+                <div class="setting-label">Warning window</div>
+                <div class="setting-sub">Days before due date to show badge</div>
+              </div>
+              <select class="setting-select" id="s-due-soon" onchange="applySettings()">
+                <option value="1">1 day</option>
+                <option value="3">3 days</option>
+                <option value="5" selected="">5 days</option>
+                <option value="7">7 days</option>
+              </select>
+            </div>
           </div>
-          <select class="setting-select" id="s-font-size" onchange="applySettings()">
-            <option value="small">Small</option>
-            <option value="medium" selected="">Medium</option>
-            <option value="large">Large</option>
-            <option value="xlarge">X-Large</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Font style</div>
-            <div class="setting-sub">Body typeface throughout the app</div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Data</div>
+            <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
+              <div class="setting-label">Reset to defaults</div>
+              <div class="setting-sub">Clears all edits. Cannot be undone.</div>
+              <button class="reset-btn" onclick="confirmReset()">Reset all data…</button>
+            </div>
           </div>
-          <select class="setting-select" id="s-font-style" onchange="applySettings()">
-            <option value="sans" selected="">DM Sans</option>
-            <option value="mono">DM Mono</option>
-            <option value="serif">DM Serif</option>
-            <option value="system">System UI</option>
-            <option value="rounded">Rounded</option>
-          </select>
+
         </div>
-      </div>
-      <div class="settings-group">
-        <div class="settings-group-label">Calendar</div>
-        <div class="setting-row">
-          <div><div class="setting-label">Default view</div></div>
-          <select class="setting-select" id="s-cal-default" onchange="applySettings()">
-            <option value="month">Month</option>
-            <option value="week">Week</option>
-            <option value="day">Day</option>
-            <option value="year">Year</option>
-          </select>
+      </div><!-- /settings-panel-main -->
+
+      <!-- ── SIDE PANEL sub-page ── -->
+      <div class="settings-panel" id="settings-panel-sidepanel">
+        <div class="settings-head">
+          <button class="settings-back" onclick="closeSettingsSubPage()">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1L3 5l4 4"/></svg>
+            Settings
+          </button>
+          <h2 style="font-family:var(--font-serif);font-size:1.2857em;letter-spacing:-.02em">Side Panel</h2>
+          <button class="settings-close" onclick="closeSettings()">✕</button>
         </div>
-        <div class="setting-row">
-          <div><div class="setting-label">Week starts on</div></div>
-          <select class="setting-select" id="s-week-start" onchange="applySettings()">
-            <option value="0">Sunday</option>
-            <option value="1">Monday</option>
-          </select>
-        </div>
-      </div>
-      <div class="settings-group">
-        <div class="settings-group-label">Highlights</div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Due-soon warning</div>
-            <div class="setting-sub">Show ⏱ badge on payments due within N days</div>
+        <div class="settings-body">
+
+          <div class="settings-group">
+            <div class="settings-group-label">Panel Mode</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Display mode</div>
+                <div class="setting-sub">Fixed always-on or slide over</div>
+              </div>
+              <select class="setting-select" id="s-panel-mode" onchange="applySettings()">
+                <option value="fixed">Fixed open</option>
+                <option value="slideover">Slide-over</option>
+              </select>
+            </div>
           </div>
-          <label class="toggle" style="flex-shrink:0">
-            <input type="checkbox" id="s-due-soon-enabled" checked="" onchange="applySettings()">
-            <div class="toggle-track"></div>
-          </label>
-        </div>
-        <div class="setting-row" id="s-due-soon-row">
-          <div>
-            <div class="setting-label">Warning window</div>
-            <div class="setting-sub">Days before due date to show badge</div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Balance Visibility</div>
+            <div class="setting-sub" style="margin-bottom:12px;color:var(--muted);font-size:0.8571em">Show or hide the amounts displayed next to each nav item</div>
+            <div id="s-badge-toggles" style="display:flex;flex-direction:column;gap:2px"></div>
           </div>
-          <select class="setting-select" id="s-due-soon" onchange="applySettings()">
-            <option value="1">1 day</option>
-            <option value="3">3 days</option>
-            <option value="5" selected="">5 days</option>
-            <option value="7">7 days</option>
-          </select>
+
         </div>
-      </div>
-      <div class="settings-group">
-        <div class="settings-group-label">Data</div>
-        <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
-          <div class="setting-label">Reset to defaults</div>
-          <div class="setting-sub">Clears all edits. Cannot be undone.</div>
-          <button class="reset-btn" onclick="confirmReset()">Reset all data…</button>
+      </div><!-- /settings-panel-sidepanel -->
+
+      <!-- ── DISPLAY & TYPOGRAPHY sub-page ── -->
+      <div class="settings-panel" id="settings-panel-display">
+        <div class="settings-head">
+          <button class="settings-back" onclick="closeSettingsSubPage()">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1L3 5l4 4"/></svg>
+            Settings
+          </button>
+          <h2 style="font-family:var(--font-serif);font-size:1.2857em;letter-spacing:-.02em">Display &amp; Text</h2>
+          <button class="settings-close" onclick="closeSettings()">✕</button>
         </div>
-      </div>
-    </div>
-  </div>
+        <div class="settings-body">
+
+          <div class="settings-group">
+            <div class="settings-group-label">Display</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Theme</div></div>
+              <select class="setting-select" id="s-theme-2" onchange="applySettings()">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Row density</div>
+                <div class="setting-sub">Compact rows save space</div>
+              </div>
+              <select class="setting-select" id="s-density-2" onchange="applySettings()">
+                <option value="normal">Normal</option>
+                <option value="compact">Compact</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Text</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Text size</div>
+                <div class="setting-sub">Base font size for the app</div>
+              </div>
+              <select class="setting-select" id="s-font-size-2" onchange="applySettings()">
+                <option value="medium">Small — 14px</option>
+                <option value="medium2">Medium — 15px</option>
+                <option value="large" selected="">Default — 16px</option>
+                <option value="large2">Large — 17px</option>
+                <option value="xlarge">X-Large — 18px</option>
+                <option value="xlarge2">XX-Large — 20px</option>
+                <option value="xxlarge">XXX-Large — 22px</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Font style</div>
+                <div class="setting-sub">Body typeface throughout the app</div>
+              </div>
+              <select class="setting-select" id="s-font-style-2" onchange="applySettings()">
+                <option value="sans" selected="">DM Sans</option>
+                <option value="mono">DM Mono</option>
+                <option value="serif">DM Serif</option>
+                <option value="system">System UI</option>
+                <option value="rounded">Rounded</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /settings-panel-display -->
+
+    </div><!-- /settings-panels -->
+  </div><!-- /settings-drawer -->
 </div>
 
 <!-- PAY EDIT MODAL -->
@@ -7470,6 +8167,99 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
     <div style="margin-top:20px">
       <button class="btn-primary" onclick="document.getElementById('gist-help-modal').classList.remove('open')" style="width:100%">Got it</button>
+    </div>
+  </div>
+</div>
+<!-- MORTGAGE EDIT MODAL -->
+<div class="modal-overlay" id="mortgage-modal" onclick="closeMortgageModal(event)">
+  <div class="modal">
+    <h2>Mortgage Details</h2>
+    <div class="form-field">
+      <label>Lender / Label</label>
+      <input type="text" id="mtg-lender" placeholder="e.g. First National #1378091">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-field">
+        <label>Original Amount</label>
+        <input type="number" id="mtg-original" placeholder="255521.25" min="0" step="0.01">
+      </div>
+      <div class="form-field">
+        <label>Current Balance</label>
+        <input type="number" id="mtg-balance" placeholder="241890.99" min="0" step="0.01">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-field">
+        <label>P&amp;I Payment (excl. tax)</label>
+        <input type="number" id="mtg-pi" placeholder="1535.96" min="0" step="0.01">
+      </div>
+      <div class="form-field">
+        <label>Property Tax (monthly)</label>
+        <input type="number" id="mtg-tax" placeholder="261.79" min="0" step="0.01">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-field">
+        <label>Interest Rate (%)</label>
+        <input type="number" id="mtg-rate" placeholder="5.34" min="0" max="30" step="0.01">
+      </div>
+      <div class="form-field">
+        <label>Rate Type</label>
+        <select id="mtg-ratetype" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
+          <option value="Fixed">Fixed</option>
+          <option value="Variable">Variable</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="form-field">
+        <label>Term End Date</label>
+        <input type="date" id="mtg-termend" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
+      </div>
+      <div class="form-field">
+        <label>Term Length (years)</label>
+        <input type="number" id="mtg-term-len" placeholder="5" min="1" max="10" step="1">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+      <div class="form-field">
+        <label>Remaining (yrs)</label>
+        <input type="number" id="mtg-term-rem-yrs" placeholder="2" min="0" max="10" step="1">
+      </div>
+      <div class="form-field">
+        <label>Remaining (mos)</label>
+        <input type="number" id="mtg-term-rem-mos" placeholder="5" min="0" max="11" step="1">
+      </div>
+      <div class="form-field">
+        <label>Completed (yrs)</label>
+        <input type="number" id="mtg-term-comp-yrs" placeholder="2" min="0" max="10" step="1">
+      </div>
+      <div class="form-field">
+        <label>Completed (mos)</label>
+        <input type="number" id="mtg-term-comp-mos" placeholder="7" min="0" max="11" step="1">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="form-field">
+        <label>Original Amort. (years)</label>
+        <input type="number" id="mtg-amort-orig" placeholder="25" min="1" max="30" step="1">
+      </div>
+      <div class="form-field">
+        <label>Remaining (years)</label>
+        <input type="number" id="mtg-amort-rem-yrs" placeholder="22" min="0" max="30" step="1">
+      </div>
+      <div class="form-field">
+        <label>Remaining (months)</label>
+        <input type="number" id="mtg-amort-rem-mos" placeholder="5" min="0" max="11" step="1">
+      </div>
+    </div>
+    <div class="form-field">
+      <label>Balance As-Of Date</label>
+      <input type="date" id="mtg-asof" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="saveMortgageModal()">Save</button>
+      <button class="btn-secondary" onclick="closeMortgageModal()">Cancel</button>
     </div>
   </div>
 </div>
