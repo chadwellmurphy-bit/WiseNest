@@ -283,8 +283,8 @@
     left: 6px; right: 6px;
     top: 50%; transform: translateY(-50%);
     height: 36px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
+    background: transparent;
+    border: 1.5px solid var(--accent);
     border-radius: 8px;
     z-index: 1;
     pointer-events: none;
@@ -1387,6 +1387,8 @@
     transform: translateX(100%);
     transition: transform .28s cubic-bezier(.4,0,.2,1);
     overflow: hidden;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .settings-overlay.open .settings-drawer { transform: none; }
 
@@ -1975,7 +1977,6 @@
         <div style="position:relative;">
           <button class="year-btn" id="year-btn" onclick="toggleYearDial()">
             <span id="year-display">2026</span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4l3 3 3-3"/></svg>
           </button>
           <div class="year-dial-wrap" id="year-dial-wrap">
             <div class="year-dial-viewport" id="year-dial-viewport">
@@ -6263,13 +6264,6 @@ function buildDialList() {
   const list = document.getElementById('year-dial-list');
   if (!list) return;
   list.innerHTML = '';
-  // Pad top/bottom so selected year can sit centred
-  const PAD = 2;
-  for (let i = 0; i < PAD; i++) {
-    const spacer = document.createElement('div');
-    spacer.className = 'year-dial-item';
-    list.appendChild(spacer);
-  }
   for (let y = DIAL_MIN; y <= DIAL_MAX; y++) {
     const item = document.createElement('div');
     item.className = 'year-dial-item' + (y === calYear ? ' selected' : '');
@@ -6277,20 +6271,18 @@ function buildDialList() {
     item.dataset.yr = y;
     list.appendChild(item);
   }
-  for (let i = 0; i < PAD; i++) {
-    const spacer = document.createElement('div');
-    spacer.className = 'year-dial-item';
-    list.appendChild(spacer);
-  }
   dialScrollTo(calYear, false);
 }
 
 function dialScrollTo(yr, animate) {
   const list = document.getElementById('year-dial-list');
+  const vp   = document.getElementById('year-dial-viewport');
   if (!list) return;
-  const idx = yr - DIAL_MIN; // 0-based index into real items (after PAD)
-  const PAD = 2;
-  const offset = -(idx + PAD) * ITEM_H;
+  const idx = yr - DIAL_MIN; // 0-based index
+  const vpH = vp ? vp.offsetHeight : 180;
+  // Centre the selected item in the viewport
+  const centreOffset = (vpH / 2) - (ITEM_H / 2);
+  const offset = centreOffset - idx * ITEM_H;
   list.style.transition = animate ? 'transform .18s ease' : 'none';
   list.style.transform = `translateY(${offset}px)`;
   // Highlight selected
@@ -6306,6 +6298,7 @@ function dialStep(delta) {
   if (newYr === calYear) return;
   selectYear(newYr);
   dialScrollTo(newYr, true);
+  // Keep open — user can keep tapping arrows
 }
 
 function toggleYearDial() {
@@ -6338,16 +6331,18 @@ function initDialDrag() {
   const vp = document.getElementById('year-dial-viewport');
   if (!vp) return;
 
-  let startY = 0, startYr = calYear, dragging = false;
+  let startY = 0, startYr = calYear, dragging = false, hasMoved = false;
 
   function onStart(e) {
     dragging = true;
+    hasMoved = false;
     startY  = e.touches ? e.touches[0].clientY : e.clientY;
     startYr = calYear;
     e.preventDefault();
   }
   function onMove(e) {
     if (!dragging) return;
+    hasMoved = true;
     const y = e.touches ? e.touches[0].clientY : e.clientY;
     const delta = Math.round((startY - y) / ITEM_H);
     const newYr = Math.min(DIAL_MAX, Math.max(DIAL_MIN, startYr + delta));
@@ -6357,7 +6352,10 @@ function initDialDrag() {
     }
     e.preventDefault();
   }
-  function onEnd() { dragging = false; }
+  function onEnd() {
+    if (dragging && hasMoved) _dialJustDragged = true;
+    dragging = false;
+  }
 
   vp.addEventListener('mousedown',  onStart, { passive: false });
   vp.addEventListener('touchstart', onStart, { passive: false });
@@ -6366,16 +6364,19 @@ function initDialDrag() {
   window.addEventListener('mouseup',  onEnd);
   window.addEventListener('touchend', onEnd);
 
-  // Wheel scroll
+  // Wheel scroll — stays open
   vp.addEventListener('wheel', e => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 1 : -1;
-    dialStep(delta);
+    const newYr = Math.min(DIAL_MAX, Math.max(DIAL_MIN, calYear + delta));
+    if (newYr !== calYear) { selectYear(newYr); dialScrollTo(newYr, true); }
   }, { passive: false });
 }
 
-// Close dial when clicking outside
+// Close dial when clicking outside — ignore if a drag just ended
+let _dialJustDragged = false;
 document.addEventListener('click', e => {
+  if (_dialJustDragged) { _dialJustDragged = false; return; }
   const btn  = document.getElementById('year-btn');
   const wrap = document.getElementById('year-dial-wrap');
   if (btn && wrap && !btn.contains(e.target) && !wrap.contains(e.target)) {
@@ -6387,7 +6388,7 @@ function selectYear(yr) {
   calYear = yr;
   calDay    = 1;
   calWeekOf = new Date(calYear, calMonth, 1);
-  closeYearDial();
+  // Do NOT close the dial here — user may still be scrolling
   updateMonthLabel();
   updateSummary();
   renderCalendar();
@@ -6600,6 +6601,43 @@ function closeSettings() {
 function settingsOverlayClick(e) {
   if (e.target === document.getElementById('settings-overlay')) closeSettings();
 }
+
+// Swipe-right-to-close for settings drawer
+(function initSettingsSwipe() {
+  let startX = 0, startY = 0, dragging = false;
+  document.addEventListener('touchstart', e => {
+    const drawer = document.getElementById('settings-overlay');
+    if (!drawer || !drawer.classList.contains('open')) return;
+    const t = e.touches[0];
+    // Only start swipe if finger begins inside the drawer
+    const drawerEl = drawer.querySelector('.settings-drawer');
+    if (drawerEl && drawerEl.contains(e.target)) {
+      startX = t.clientX; startY = t.clientY; dragging = true;
+    }
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = Math.abs(t.clientY - startY);
+    // Only treat as horizontal swipe if more horizontal than vertical
+    if (dx > 0 && dx > dy) {
+      const drawerEl = document.querySelector('.settings-drawer');
+      if (drawerEl) drawerEl.style.transform = `translateX(${dx}px)`;
+    }
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!dragging) return;
+    dragging = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const drawerEl = document.querySelector('.settings-drawer');
+    if (drawerEl) {
+      drawerEl.style.transform = '';
+      if (dx > 80) closeSettings();
+    }
+  }, { passive: true });
+})();
 function openSettingsSubPage(name) {
   const panels = document.getElementById('settings-panels');
   panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
