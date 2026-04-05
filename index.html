@@ -3225,23 +3225,23 @@ let monthlyBankAccounts = {};
 
 // MORTGAGE_START
 let mortgageData = {
-  lender: 'First National #1378091',
-  originalAmount: 255521.25,
-  balance: 241890.99,
-  piPayment: 1535.96,
-  taxPayment: 261.79,
-  rate: 5.34,
+  lender: '',
+  originalAmount: 0,
+  balance: 0,
+  piPayment: 0,
+  taxPayment: 0,
+  rate: 0,
   rateType: 'Fixed',
-  termEnd: '2028-08-21',
+  termEnd: '',
   termLengthYears: 5,
-  termRemainingYears: 2,
-  termRemainingMonths: 5,
-  termCompletedYears: 2,
-  termCompletedMonths: 7,
-  originalAmortYears: 25,
-  remainingAmortYears: 22,
-  remainingAmortMonths: 5,
-  asOf: '2026-04-01'
+  termRemainingYears: 0,
+  termRemainingMonths: 0,
+  termCompletedYears: 0,
+  termCompletedMonths: 0,
+  originalAmortYears: 0,
+  remainingAmortYears: 0,
+  remainingAmortMonths: 0,
+  asOf: ''
 };
 // MORTGAGE_END
 
@@ -5429,10 +5429,14 @@ function renderMortgagePage() {
     <!-- Payment breakdown -->
     <div style="border-top:1px solid var(--border);padding:16px 20px">
       <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Monthly Payment Breakdown</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
           <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Total</div>
           <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:#5b8aff">${fmtCurrency(totalPayment)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Prop. Tax</div>
+          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--muted)">${fmtCurrency(taxPayment)}</div>
         </div>
         <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
           <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">~Principal</div>
@@ -5441,10 +5445,6 @@ function renderMortgagePage() {
         <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
           <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">~Interest</div>
           <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--expense-red)">${fmtCurrency(monthlyInterest)}</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
-          <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Prop. Tax</div>
-          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--muted)">${fmtCurrency(taxPayment)}</div>
         </div>
       </div>
     </div>
@@ -5510,7 +5510,7 @@ function renderMortgagePage() {
         </div>
         <div>
           <div style="font-family:var(--font-mono);font-size:0.6429em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Balance As-Of</div>
-          <div style="font-size:0.9em;color:var(--muted)">${m.asOf ? new Date(m.asOf + 'T12:00:00').toLocaleDateString('en-CA', {year:'numeric',month:'short',day:'numeric'}) : '—'}</div>
+          <div style="font-size:0.9em;color:var(--muted)">${new Date(calYear, calMonth, 1).toLocaleDateString('en-CA', {year:'numeric',month:'short'})}</div>
         </div>
       </div>
     </div>
@@ -6519,10 +6519,11 @@ function updateMortgageRenewalCard() {
     if (subEl) subEl.textContent = 'No term date set';
     return;
   }
-  const now  = new Date();
-  const end  = new Date(mortgageData.termEnd + 'T12:00:00');
+  // Use the viewed month, not today, so the card updates with month nav
+  const viewedDate  = new Date(calYear, calMonth, 1);
+  const end         = new Date(mortgageData.termEnd + 'T12:00:00');
   const totalTermMos = (mortgageData.termLengthYears || 5) * 12;
-  const msLeft = end - now;
+  const msLeft = end - viewedDate;
   const mosLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24 * 30.44)));
   const pct = totalTermMos > 0 ? Math.min(100, Math.round((1 - mosLeft / totalTermMos) * 100)) : 0;
   const yrs = Math.floor(mosLeft / 12);
