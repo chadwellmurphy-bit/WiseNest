@@ -32,7 +32,12 @@
 
   html, body {
     height: 100%;
-    overscroll-behavior-y: none; /* disable Safari native pull-to-refresh */
+    /* iOS: fix root to viewport so body never scrolls — only inner containers do */
+    overflow: hidden;
+    overscroll-behavior: none;
+    position: fixed;
+    width: 100%;
+    top: 0; left: 0;
   }
 
   body {
@@ -40,8 +45,8 @@
     color: var(--text);
     font-family: var(--font-sans);
     font-size: var(--base-font-size, 14px);
-    min-height: 100vh;
-    overflow-x: hidden;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Subtle grid background */
@@ -61,7 +66,9 @@
   /* ── SHELL ─────────────────────────────────────────────── */
   .shell {
     display: flex;
-    min-height: 100vh;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
     position: relative;
     z-index: 1;
   }
@@ -74,10 +81,15 @@
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    position: fixed;
-    top: 0; left: 0; bottom: 0;
+    /* iOS-safe: sit as a flex child of .shell (which is fixed to viewport).
+       This means the nav never moves — only its inner content scrolls. */
+    position: relative;
+    height: 100%;
     z-index: 50;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .nav-brand {
@@ -176,20 +188,24 @@
 
   /* ── MAIN CONTENT AREA ──────────────────────────────────── */
   .main-content {
-    margin-left: 220px;
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    padding-top: calc(61px + env(safe-area-inset-top)); /* height of the fixed top-bar + iPhone notch */
+    /* iOS-safe: scroll happens here, not on body */
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* no padding-top needed: top-bar is sticky first child */
   }
 
   /* ── TOP BAR ────────────────────────────────────────────── */
   .top-bar {
-    position: fixed;
+    /* sticky within .main-content — stays locked at top without iOS drift */
+    position: sticky;
     top: 0;
-    left: 220px;
-    right: 0;
     z-index: 40;
     background: rgba(15,15,17,.96);
     backdrop-filter: blur(12px);
@@ -200,6 +216,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    flex-shrink: 0;
   }
   /* In slide-over mode the nav collapses, so the top-bar spans full width */
   body.nav-slideover .top-bar { left: 0; }
@@ -1481,12 +1498,16 @@
 
   /* ── SLIDE-OVER NAV ────────────────────────────────────── */
   body.nav-slideover .left-nav {
+    /* In slide-over mode, nav overlays content so must be fixed */
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    height: 100%;
     transform: translateX(-100%);
     transition: transform .28s cubic-bezier(.4,0,.2,1);
     box-shadow: none;
   }
   body.nav-slideover .left-nav.open {
-    transform: none;
+    transform: translate3d(0,0,0);
     box-shadow: 8px 0 32px rgba(0,0,0,.5);
     width: 33vw; min-width: 200px; max-width: 260px;
   }
@@ -1675,12 +1696,15 @@
 
     /* Nav slide-over (mobile, fixed mode) */
     body:not(.nav-slideover) .left-nav {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      height: 100%;
       transform: translateX(-100%);
       transition: transform .28s cubic-bezier(.4,0,.2,1);
       box-shadow: none;
     }
     body:not(.nav-slideover) .left-nav.open {
-      transform: none;
+      transform: translate3d(0,0,0);
       box-shadow: 8px 0 32px rgba(0,0,0,.6);
       width: 80vw; min-width: 200px; max-width: 260px;
     }
@@ -1735,6 +1759,9 @@
 
     /* Icon rail mode overrides */
     body.mobile-panel-icons .left-nav {
+      position: fixed !important;
+      top: 0; left: 0; bottom: 0;
+      height: 100% !important;
       width: 52px !important;
       min-width: 52px !important;
       transform: none !important;
@@ -1743,7 +1770,7 @@
       overflow: hidden;
     }
     body.mobile-panel-icons .main-content { margin-left: 52px !important; }
-    body.mobile-panel-icons .top-bar       { left: 52px !important; }
+    /* top-bar is sticky inside main-content; no left offset needed */
     body.mobile-panel-icons .hamburger-btn { display: none !important; }
 
     /* Nav items — icon only */
@@ -1787,12 +1814,15 @@
 
     /* Fixed mode on mobile (non-icon-rail): full slide-over */
     body:not(.nav-slideover):not(.mobile-panel-icons) .left-nav {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      height: 100%;
       transform: translateX(-100%);
       transition: transform .28s cubic-bezier(.4,0,.2,1);
       box-shadow: none;
     }
     body:not(.nav-slideover):not(.mobile-panel-icons) .left-nav.open {
-      transform: none;
+      transform: translate3d(0,0,0);
       box-shadow: 8px 0 32px rgba(0,0,0,.6);
       width: 80vw; min-width: 200px; max-width: 260px;
     }
@@ -1942,6 +1972,9 @@
   </div>
 </nav>
 
+<!-- NAV OVERLAY (slide-over) — sibling of nav & main-content so it covers both -->
+<div class="nav-overlay" id="nav-overlay" onclick="closeNav()"></div>
+
 <!-- ═══ MAIN CONTENT ════════════════════════════════════════ -->
 <div class="main-content">
 
@@ -1950,9 +1983,6 @@
     <span id="ptr-spinner">↻</span>
     <span id="ptr-label">Pull to sync</span>
   </div>
-
-  <!-- NAV OVERLAY (slide-over) -->
-  <div class="nav-overlay" id="nav-overlay" onclick="closeNav()"></div>
 
   <!-- TOP BAR -->
   <div class="top-bar">
@@ -7299,12 +7329,18 @@ function toggleNav() {
   if (!nav) return;
   const isOpen = nav.classList.toggle('open');
   if (ol) ol.classList.toggle('open', isOpen);
+  // iOS: lock body scroll while nav is open so the panel stays fixed
+  document.body.style.overflow = isOpen ? 'hidden' : '';
+  document.documentElement.style.overflow = isOpen ? 'hidden' : '';
 }
 function closeNav() {
   const nav = document.getElementById('left-nav');
   const ol  = document.getElementById('nav-overlay');
   if (nav) nav.classList.remove('open');
   if (ol)  ol.classList.remove('open');
+  // iOS: restore body scroll
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
 }
 
 function confirmReset() {
