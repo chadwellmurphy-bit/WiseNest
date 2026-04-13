@@ -4103,8 +4103,8 @@ function renderExpenses() {
         <div class="${due ? 'due-badge' : 'due-badge-empty'}" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${due || ''}</div>
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:0;padding-top:2px;cursor:pointer" title="Click to edit" onclick="editExpense('${item.id}')">
-        <span style="font-family:var(--font-mono);font-size:0.8571em;color:var(--muted);line-height:1">$</span>
-        <span style="font-family:var(--font-mono);font-size:0.8571em;color:var(--text);line-height:1">${Number(amt).toLocaleString('en-CA')}</span>
+        <span style="font-family:var(--font-mono);font-size:0.8571em;color:${amt < 0 ? 'var(--income-green)' : 'var(--muted)'};line-height:1">${amt < 0 ? '-$' : '$'}</span>
+        <span style="font-family:var(--font-mono);font-size:0.8571em;color:${amt < 0 ? 'var(--income-green)' : 'var(--text)'};line-height:1">${Math.abs(Number(amt)).toLocaleString('en-CA')}</span>
         <button class="icon-btn delete" onclick="event.stopPropagation();confirmDeleteExpense('${item.id}')" title="Delete" style="opacity:0;width:16px;height:16px;margin-left:4px;flex-shrink:0" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0">
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
         </button>
@@ -4260,22 +4260,29 @@ function updateSummary() {
   const totalIncome = totalActualMonthlyIncome(calYear, calMonth);
   const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
   const bal = totalIncome - totalExpenses;
-  const expPct = Math.round((totalExpenses / totalIncome) * 100);
-  const balPct = Math.round((bal / totalIncome) * 100);
+  // Clamp percentages so refunds (negative expenses) don't produce nonsense values
+  const expPct = totalIncome > 0 ? Math.max(0, Math.min(100, Math.round((totalExpenses / totalIncome) * 100))) : 0;
+  const balPct = totalIncome > 0 ? Math.max(0, Math.min(100, Math.round((bal / totalIncome) * 100))) : 0;
 
   document.getElementById('total-income').textContent = fmt(totalIncome);
-  document.getElementById('total-expenses').textContent = fmt(totalExpenses);
-  document.getElementById('balance').textContent = (bal < 0 ? '-' : '') + fmt(bal);
+  // Show total expenses net of refunds; if refunds exceed expenses show as negative (green)
+  const expEl = document.getElementById('total-expenses');
+  expEl.textContent = (totalExpenses < 0 ? '-' : '') + fmt(Math.abs(totalExpenses));
+  expEl.style.color = totalExpenses < 0 ? 'var(--income-green)' : '';
+  document.getElementById('balance').textContent = (bal < 0 ? '-' : '') + fmt(Math.abs(bal));
   document.getElementById('balance').style.color = bal < 0 ? 'var(--expense-red)' : 'var(--accent)';
 
   document.getElementById('income-total').textContent = fmt(totalIncome);
-  document.getElementById('expense-total').textContent = fmt(totalExpenses);
+  const expTotalEl = document.getElementById('expense-total');
+  expTotalEl.textContent = (totalExpenses < 0 ? '-' : '') + fmt(Math.abs(totalExpenses));
+  expTotalEl.style.color = totalExpenses < 0 ? 'var(--income-green)' : '';
 
-  document.getElementById('expense-bar').style.width = Math.min(expPct, 100) + '%';
-  document.getElementById('balance-bar').style.width = Math.max(0, Math.min(balPct, 100)) + '%';
+  document.getElementById('expense-bar').style.width = expPct + '%';
+  document.getElementById('balance-bar').style.width = balPct + '%';
 
-  // Balance track
-  const incPct = Math.min(100, Math.round((totalIncome / (totalIncome + totalExpenses)) * 100));
+  // Balance track — use clamped gross values so bars don't invert
+  const grossExp = Math.max(0, totalExpenses);
+  const incPct = (totalIncome + grossExp) > 0 ? Math.min(100, Math.round((totalIncome / (totalIncome + grossExp)) * 100)) : 50;
   ['balance-income-fill','balance-income-fill-s'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.width=incPct+'%';});
   ['balance-expense-fill','balance-expense-fill-s'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.width=(100-incPct)+'%';});
 
@@ -5623,7 +5630,7 @@ function getDaySuffix(d) {
   switch (d % 10) { case 1: return 'st'; case 2: return 'nd'; case 3: return 'rd'; default: return 'th'; }
 }
 function fmtMoney(n) {
-  return '$' + Math.round(n).toLocaleString('en-CA');
+  return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-CA');
 }
 
 function setCalView(v) {
@@ -5798,7 +5805,7 @@ function buildDayDetailHTML(yr, mo, day, showBack) {
       out += '<div class="cal-day-row">' + dot + logo
         + '<div style="flex:1"><div class="cal-day-name">' + x.name + (isIncome ? ' <span style="font-size:0.7143em;color:var(--income-green)">INCOME</span>' : '') + editedBadge + manualBadge + '</div>' + defaultNote + '</div>'
         + editBtn
-        + '<div class="cal-day-amt" style="color:'+(isIncome?'var(--income-green)':'')+'">'+fmtMoney(x.amount)+'</div>'
+        + '<div class="cal-day-amt" style="color:'+(isIncome||x.amount<0?'var(--income-green)':'')+'">'+fmtMoney(x.amount)+'</div>'
         + '</div>';
     });
     if (expOnly.length > 0) out += '<div class="cal-day-total-strip"><div class="cal-day-total-label">Total due</div><div class="cal-day-total-val">'+fmtMoney(total)+'</div></div>';
@@ -5949,7 +5956,7 @@ function renderMonthView(body) {
       + (hasPay ? ' data-calday="'+d+'" onmouseenter="showCalTip(event)" onmouseleave="hideCalTip()"' : '')
       + '>'
       + '<div class="cal-day">'+d+'</div>'
-      + (hasExpense ? '<div class="cal-entry-expense">'+fmtMoney(expenseTotal)+'</div>' : '')
+      + (hasExpense ? '<div class="cal-entry-expense" style="'+(expenseTotal<0?'color:var(--income-green)':'')+'">'+fmtMoney(expenseTotal)+'</div>' : '')
       + (hasIncome ? '<div class="cal-entry-income">'+fmtMoney(incomeTotal)+'</div>' : '')
       + (hasOverride ? '<div class="cal-override-badge">edited</div>' : '')
       + (hasManual ? '<div class="cal-manual-dot" title="Manual payment required"></div>' : '')
@@ -5997,7 +6004,7 @@ function renderWeekView(body) {
       + '>'
       + '<div class="cal-week-dow">'+DAY_NAMES_SHORT[i]+'</div>'
       + '<div class="cal-week-day">'+dy+'</div>'
-      + (hasExpense ? '<div class="cal-week-total">'+fmtMoney(expenseTotal)+'</div>' : '')
+      + (hasExpense ? '<div class="cal-week-total" style="'+(expenseTotal<0?'color:var(--income-green)':'')+'">'+fmtMoney(expenseTotal)+'</div>' : '')
       + (hasIncome ? '<div class="cal-week-total" style="color:var(--income-green)">'+fmtMoney(incomeTotal)+'</div>' : '')
       + (hasPay ? '<div class="cal-week-items">'+items.slice(0,3).map(x=>'<div class="cal-week-item" style="color:'+(x.type==="income"?"var(--income-green)":"var(--muted)")+'">'+x.name+'</div>').join('')+(items.length>3?'<div class="cal-week-item">+more…</div>':'')+'</div>' : '')
       + '</div>';
@@ -6127,7 +6134,8 @@ function drawDonut(total) {
     cats[e.category] += amt;
   });
 
-  const totalExp = Object.values(cats).reduce((s, v) => s + v, 0);
+  // Exclude refund items (negative amounts) from the pie — they reduce the total but don't get a slice
+  const totalExp = Object.values(cats).reduce((s, v) => s + Math.max(0, v), 0);
   const entries = Object.entries(cats).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
 
   ctx.clearRect(0, 0, 120, 120);
@@ -6170,8 +6178,10 @@ function drawIncomePie() {
 
   const totalIncome = totalActualMonthlyIncome(calYear, calMonth);
   const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
-  const leftover = Math.max(0, totalIncome - totalExpenses);
-  const total = totalExpenses + leftover;
+  // If refunds make totalExpenses negative, treat net as zero for pie purposes (more income is "free")
+  const netExpenses = Math.max(0, totalExpenses);
+  const leftover = Math.max(0, totalIncome - netExpenses);
+  const total = netExpenses + leftover;
 
   ctx.clearRect(0, 0, 120, 120);
 
@@ -6577,7 +6587,8 @@ function updateNavBadges() {
   const b = (n) => '$' + Math.round(n).toLocaleString('en-CA');
   const el = (id) => document.getElementById(id);
   if (el('nav-badge-income'))    el('nav-badge-income').textContent    = b(totalActualMonthlyIncome(calYear, calMonth));
-  if (el('nav-badge-expenses'))  el('nav-badge-expenses').textContent  = b(totalExpenses);
+  // Show refund-adjusted net expenses in badge; prefix minus if net negative
+  if (el('nav-badge-expenses'))  el('nav-badge-expenses').textContent  = (totalExpenses < 0 ? '-' : '') + '$' + Math.round(Math.abs(totalExpenses)).toLocaleString('en-CA');
   if (el('nav-badge-debt'))      el('nav-badge-debt').textContent      = b(totalDebt);
   if (el('nav-badge-invest'))    el('nav-badge-invest').textContent    = b(totalInvest);
   if (el('nav-badge-creditcards')) {
@@ -6593,8 +6604,9 @@ function updateNavBadges() {
   applyBadgeVisibility();
   // Also sync the summary balance bars
   if (totalIncome > 0) {
-    const expPct = Math.min(100, Math.round((totalExpenses / totalIncome) * 100));
-    const incPct = Math.min(100, Math.round((totalIncome / (totalIncome + totalExpenses)) * 100));
+    const grossExp = Math.max(0, totalExpenses);
+    const expPct = Math.min(100, Math.max(0, Math.round((grossExp / totalIncome) * 100)));
+    const incPct = (totalIncome + grossExp) > 0 ? Math.min(100, Math.round((totalIncome / (totalIncome + grossExp)) * 100)) : 50;
     const s1 = document.getElementById('balance-income-fill-s');
     const s2 = document.getElementById('balance-expense-fill-s');
     if (s1) s1.style.width = incPct + '%';
@@ -7513,7 +7525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-field">
         <label>Monthly Amount (CAD)</label>
-        <input type="number" id="exp-modal-amount" placeholder="0" min="0">
+        <input type="number" id="exp-modal-amount" placeholder="0">
       </div>
       <div class="form-field">
         <label>Payment Date</label>
