@@ -1021,6 +1021,21 @@
     transition: all 0.15s;
   }
   .btn-secondary:hover { color: var(--text); border-color: var(--text); }
+  .btn-danger {
+    padding: 10px 14px;
+    background: transparent;
+    color: var(--expense-red);
+    border: 1px solid rgba(255,91,122,.35);
+    border-radius: 8px;
+    font-family: var(--font-sans);
+    font-size: 0.9286em;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-danger:hover { background: rgba(255,91,122,.12); border-color: var(--expense-red); }
 
   .header-right {
     display: flex;
@@ -4933,8 +4948,15 @@ function addExpense() {
   document.getElementById('exp-modal-cat').value = 'Lifestyle';
   setSelectedSource(null);
   document.getElementById('exp-modal-manual').checked = false;
-  document.getElementById('exp-modal-repeat-wrap').style.display = '';
+  // Hide delete button in add mode
+  document.getElementById('exp-modal-delete-btn').style.display = 'none';
+  const repeatWrap = document.getElementById('exp-modal-repeat-wrap');
+  repeatWrap.style.display = '';
   document.getElementById('exp-modal-repeat').checked = true;
+  const repeatTitle = repeatWrap.querySelector('.exp-repeat-title');
+  if (repeatTitle) repeatTitle.textContent = 'Repeat every month';
+  const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
+  if (repeatDesc) repeatDesc.textContent = 'On means this expense repeats from this month forward. Off means this month only.';
   document.getElementById('expense-modal').classList.add('open');
   setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
 }
@@ -4950,6 +4972,16 @@ function editExpense(id) {
   document.getElementById('exp-modal-cat').value = getExpenseCategoryForMonth(id, calYear, calMonth) || 'Lifestyle';
   setSelectedSource(getExpenseSourceForMonth(id, calYear, calMonth));
   document.getElementById('exp-modal-manual').checked = getExpenseManualForMonth(id, calYear, calMonth);
+  // Show delete button in edit mode
+  document.getElementById('exp-modal-delete-btn').style.display = '';
+  // Show the repeat toggle in edit mode with appropriate label
+  const repeatWrap = document.getElementById('exp-modal-repeat-wrap');
+  repeatWrap.style.display = '';
+  document.getElementById('exp-modal-repeat').checked = true;
+  const repeatTitle = repeatWrap.querySelector('.exp-repeat-title');
+  if (repeatTitle) repeatTitle.textContent = 'Apply change to all months';
+  const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
+  if (repeatDesc) repeatDesc.textContent = 'On = this month and forward. Off = this month only.';
   document.getElementById('expense-modal').classList.add('open');
   setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
 }
@@ -5018,6 +5050,13 @@ function addCustomSource() {
   prev.innerHTML = '';
 }
 
+function expModalDelete() {
+  if (!expenseEditId) return;
+  document.getElementById('expense-modal').classList.remove('open');
+  confirmDeleteExpense(expenseEditId);
+  expenseEditId = null;
+}
+
 function saveExpenseModal() {
   const name = document.getElementById('exp-modal-name').value.trim();
   const amount = parseFloat(document.getElementById('exp-modal-amount').value) || 0;
@@ -5033,7 +5072,28 @@ function saveExpenseModal() {
   pushUndo();
 
   if (expenseEditId) {
-    setExpenseFieldsFromMonth(expenseEditId, { amount, due, category, source, manual }, calYear, calMonth);
+    if (repeat) {
+      // Update this month and bleed forward (default behaviour)
+      setExpenseFieldsFromMonth(expenseEditId, { amount, due, category, source, manual }, calYear, calMonth);
+    } else {
+      // This month only: stamp the edit for this month, then write a reset entry
+      // for the NEXT month that restores whatever was previously effective there.
+      setExpenseFieldsFromMonth(expenseEditId, { amount, due, category, source, manual }, calYear, calMonth);
+      const nextMo = calMonth === 11 ? 0 : calMonth + 1;
+      const nextYr = calMonth === 11 ? calYear + 1 : calYear;
+      // Seed next month's reset from the values that were effective BEFORE this edit.
+      // We look at what the history said for the current month's predecessor.
+      const prevMo = calMonth === 0 ? 11 : calMonth - 1;
+      const prevYr = calMonth === 0 ? calYear - 1 : calYear;
+      const prev = _historyEntryFor(expenseEditId, prevYr, prevMo);
+      const base = _baseExpense(expenseEditId);
+      const resetAmount   = prev && prev.amount   !== undefined ? prev.amount   : (expenseAmounts[expenseEditId] !== undefined ? expenseAmounts[expenseEditId] : (base.amount   || 0));
+      const resetDue      = prev && prev.due      !== undefined ? prev.due      : (base.due      || '');
+      const resetSource   = prev && prev.source   !== undefined ? prev.source   : (base.source   || null);
+      const resetCategory = prev && prev.category !== undefined ? prev.category : (base.category || '');
+      const resetManual   = prev && prev.manual   !== undefined ? prev.manual   : !!(base.manual);
+      setExpenseFieldsFromMonth(expenseEditId, { amount: resetAmount, due: resetDue, source: resetSource, category: resetCategory, manual: resetManual }, nextYr, nextMo);
+    }
   } else {
     const id = 'exp_' + Date.now();
     if (repeat) {
@@ -5800,8 +5860,8 @@ function buildDayDetailHTML(yr, mo, day, showBack) {
       const manualBadge = (!isIncome && x.manual) ? ' <span class="manual-badge">✋</span>' : '';
       const defaultNote = (isIncome && x.overridden) ? '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono)">default: '+fmtMoney(x.defaultAmt)+'</div>' : '';
       const editBtn = isIncome
-        ? '<button data-yr="'+yr+'" data-mo="'+mo+'" data-id="'+x.id+'" data-idx="'+x.payIdx+'" data-amt="'+x.amount+'" onclick="openEditPay(+this.dataset.yr,+this.dataset.mo,this.dataset.id,+this.dataset.idx,+this.dataset.amt)" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 8px;font-size:0.7143em;cursor:pointer;white-space:nowrap">✏ Edit</button>'
-        : '<button data-id="'+x.id+'" onclick="calEditExpense(this.dataset.id)" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 8px;font-size:0.7143em;cursor:pointer;white-space:nowrap">✏ Edit</button>';
+        ? '<button data-yr="'+yr+'" data-mo="'+mo+'" data-id="'+x.id+'" data-idx="'+x.payIdx+'" data-amt="'+x.amount+'" onclick="openEditPay(+this.dataset.yr,+this.dataset.mo,this.dataset.id,+this.dataset.idx,+this.dataset.amt)" title="Edit" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 7px;line-height:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a2.121 2.121 0 0 1 3 3L5 15H1v-4L11.5 2.5z"/></svg></button>'
+        : '<button data-id="'+x.id+'" onclick="calEditExpense(this.dataset.id)" title="Edit" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 7px;line-height:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a2.121 2.121 0 0 1 3 3L5 15H1v-4L11.5 2.5z"/></svg></button>';
       out += '<div class="cal-day-row">' + dot + logo
         + '<div style="flex:1"><div class="cal-day-name">' + x.name + (isIncome ? ' <span style="font-size:0.7143em;color:var(--income-green)">INCOME</span>' : '') + editedBadge + manualBadge + '</div>' + defaultNote + '</div>'
         + editBtn
@@ -7578,8 +7638,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 <div class="form-field" id="exp-modal-repeat-wrap" style="margin-bottom:16px;display:none">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:0.9286em;font-weight:500">Repeat every month</div>
-          <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:2px">On means this expense repeats from this month forward. Off means this month only.</div>
+          <div class="exp-repeat-title" style="font-size:0.9286em;font-weight:500">Repeat every month</div>
+          <div class="exp-repeat-desc" style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:2px">On means this expense repeats from this month forward. Off means this month only.</div>
         </div>
         <label class="toggle" style="flex-shrink:0;margin-left:16px">
           <input type="checkbox" id="exp-modal-repeat" checked>
@@ -7587,9 +7647,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         </label>
       </div>
     </div>
-<div class="modal-actions">
-      <button class="btn-primary" onclick="saveExpenseModal()">Save</button>
-      <button class="btn-secondary" onclick="closeExpenseModal()">Cancel</button>
+<div class="modal-actions" style="justify-content:space-between">
+      <button id="exp-modal-delete-btn" class="btn-danger" style="display:none" onclick="expModalDelete()">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
+        Delete
+      </button>
+      <div style="display:flex;gap:10px;margin-left:auto">
+        <button class="btn-secondary" onclick="closeExpenseModal()">Cancel</button>
+        <button class="btn-primary" style="flex:none;padding:10px 20px" onclick="saveExpenseModal()">Save</button>
+      </div>
     </div>
   </div>
 </div>
