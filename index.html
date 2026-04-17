@@ -662,30 +662,38 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
+    gap: 8px;
   }
 
   .debt-name {
     font-size: 0.9286em;
     font-weight: 500;
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .debt-meta {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     align-items: center;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .debt-rate {
-    font-family:var(--font-mono);
+    font-family: var(--font-mono);
     font-size: 0.7143em;
     color: var(--muted);
+    min-width: 3.8em;
+    text-align: right;
   }
 
   .debt-balance {
-    font-family:var(--font-mono);
+    font-family: var(--font-mono);
     font-size: 0.9286em;
     font-weight: 500;
     color: var(--debt-amber);
+    text-align: right;
   }
 
   .progress-track {
@@ -4434,15 +4442,18 @@ function renderDebts() {
                   : ' <span style="font-size:0.7143em;color:var(--expense-red)">▲ ' + fmt(diff) + '</span>')
       : '';
     const paymentStr = effectivePayment > 0
-      ? `<span style="font-size:0.7143em;color:var(--muted);margin-left:6px">−${fmt(effectivePayment)}/mo</span>`
+      ? `<div style="font-size:0.6786em;color:var(--muted);text-align:right;margin-top:2px">−${fmt(effectivePayment)}/mo</div>`
       : '';
     return `
     <div class="debt-item">
       <div class="debt-row">
         <div class="debt-name">${d.name}</div>
         <div class="debt-meta">
-          ${d.rate ? '<span class="debt-rate">'+d.rate+'</span>' : ''}
-          <span class="debt-balance">${fmt(displayBalance)}${diffStr}${paymentStr}</span>
+          ${d.rate ? '<span class="debt-rate">'+d.rate+'</span>' : '<span class="debt-rate"></span>'}
+          <div style="text-align:right">
+            <span class="debt-balance">${fmt(displayBalance)}${diffStr}</span>
+            ${paymentStr}
+          </div>
           <div class="item-actions" style="opacity:1;margin-left:4px">
             <button class="icon-btn" onclick="editDebt(${i})" title="Edit">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
