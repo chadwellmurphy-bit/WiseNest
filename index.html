@@ -706,6 +706,55 @@
     background: linear-gradient(90deg, var(--income-green), var(--invest-blue));
   }
 
+  /* DEBT — months remaining & sort */
+  .debt-months-remaining {
+    font-size: 0.6786em;
+    color: var(--muted);
+    margin-top: 5px;
+    letter-spacing: 0.02em;
+  }
+  .debt-months-remaining .mo-count {
+    color: var(--debt-amber);
+    font-weight: 600;
+  }
+  .debt-months-remaining .mo-paid-off {
+    color: var(--income-green);
+    font-weight: 600;
+  }
+  .debt-sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.7143em;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .debt-sort-bar span { opacity: 0.6; }
+  .debt-sort-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 1em;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    font-family: var(--font-sans);
+  }
+  .debt-sort-btn.active {
+    background: var(--debt-amber);
+    border-color: var(--debt-amber);
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+  .debt-sort-btn:not(.active):hover {
+    border-color: var(--debt-amber);
+    color: var(--debt-amber);
+  }
+
   /* INVESTMENTS */
   .invest-item {
     padding: 14px 20px;
@@ -3287,6 +3336,8 @@ let categoryColors = {
 // CATCOLORS_END
 
 // ─── STATE ──────────────────────────────────────────────────────
+let debtSortMode = 'balance'; // 'balance' | 'rate' | 'months'
+
 // AMOUNTS_START
 let expenseAmounts = {};
 let incomeAmounts = {};
@@ -3867,7 +3918,7 @@ function getDebtsForMonth(yr, mo) {
 }
 
 // Walk backwards to find the most recent snapshot with a known balance for debt[i],
-// then step forward month-by-month deducting payments to project the balance.
+// then step forward month-by-month applying amortization (interest accrues, then payment deducted).
 function projectDebtBalance(i, targetYr, targetMo) {
   const baseDebt = debts[i];
   if (!baseDebt) return null;
@@ -3891,7 +3942,13 @@ function projectDebtBalance(i, targetYr, targetMo) {
       const prevYr2 = startMo === 0 ? startYr - 1 : startYr;
       const prevSnap2 = monthlyDebts[monthKey(prevYr2, prevMo2)];
       const prevBal2 = prevSnap2 && prevSnap2[i] !== undefined ? prevSnap2[i].balance : null;
-      return prevBal2 !== null ? Math.max(0, prevBal2 - snap.paymentOverride) : snap.balance;
+      if (prevBal2 !== null) {
+        // Apply interest on prev balance then deduct override payment
+        const rate2 = parseDebtRate(snap.rate || baseDebt.rate);
+        const withInterest2 = prevBal2 + prevBal2 * (rate2 / 12);
+        return Math.max(0, withInterest2 - snap.paymentOverride);
+      }
+      return snap.balance;
     }
     return snap.balance;
   }
@@ -3904,10 +3961,17 @@ function projectDebtBalance(i, targetYr, targetMo) {
     const prevYr3 = startMo === 0 ? startYr - 1 : startYr;
     const prevSnap3 = monthlyDebts[monthKey(prevYr3, prevMo3)];
     const prevBal3 = prevSnap3 && prevSnap3[i] !== undefined ? prevSnap3[i].balance : null;
-    bal = prevBal3 !== null ? Math.max(0, prevBal3 - anchorSnap.paymentOverride) : anchorSnap.balance;
+    if (prevBal3 !== null) {
+      const rate3 = parseDebtRate(anchorSnap.rate || baseDebt.rate);
+      const withInterest3 = prevBal3 + prevBal3 * (rate3 / 12);
+      bal = Math.max(0, withInterest3 - anchorSnap.paymentOverride);
+    } else {
+      bal = anchorSnap.balance;
+    }
   } else {
     bal = anchorSnap.balance;
   }
+  let currentAnchorRate = parseDebtRate(anchorSnap.rate || baseDebt.rate);
   let currentAnchorPayment = anchorSnap.payment || 0;
 
   let y = startYr, m = startMo;
@@ -3916,15 +3980,19 @@ function projectDebtBalance(i, targetYr, targetMo) {
     const k = monthKey(y, m);
     if (monthlyDebts[k] && monthlyDebts[k][i] !== undefined) {
       const snap = monthlyDebts[k][i];
-      // Re-anchor on this snapshot's effective balance
+      // Re-anchor on this snapshot's stored balance (already a real balance, not projected)
       if (snap.paymentOverride !== undefined) {
-        bal = Math.max(0, bal - snap.paymentOverride);
+        // Apply interest then override payment
+        const snapRate = parseDebtRate(snap.rate || baseDebt.rate);
+        bal = Math.max(0, bal + bal * (snapRate / 12) - snap.paymentOverride);
       } else {
         bal = snap.balance;
       }
+      currentAnchorRate = parseDebtRate(snap.rate || baseDebt.rate);
       currentAnchorPayment = snap.payment || 0;
     } else {
-      bal = Math.max(0, bal - currentAnchorPayment);
+      // No snapshot for this month: apply amortization (interest + recurring payment)
+      bal = applyMonthlyAmortization(bal, currentAnchorRate, currentAnchorPayment);
     }
   }
   return bal;
@@ -4215,6 +4283,44 @@ function renderExpenses() {
   `}).join('');
 }
 
+// ─── DEBT AMORTIZATION HELPERS ───────────────────────────────────
+
+// Parse a rate string like "3.45%" or "3.45" → decimal (e.g. 0.0345).
+// Returns 0 if unparseable.
+function parseDebtRate(rateStr) {
+  if (!rateStr) return 0;
+  const n = parseFloat(String(rateStr).replace('%', ''));
+  return isNaN(n) ? 0 : n / 100;
+}
+
+// Given a current balance, annual interest rate (decimal), and monthly payment,
+// return how many months until the balance hits 0.
+// Returns null if no payment is set or payment can't cover interest.
+// Returns 0 if balance is already 0.
+function calcMonthsRemaining(balance, annualRate, monthlyPayment) {
+  if (balance <= 0) return 0;
+  if (!monthlyPayment || monthlyPayment <= 0) return null;
+  const monthlyRate = annualRate / 12;
+  if (monthlyRate <= 0) {
+    // 0% interest — straight division
+    return Math.ceil(balance / monthlyPayment);
+  }
+  const interestThisMonth = balance * monthlyRate;
+  if (monthlyPayment <= interestThisMonth) return null; // can't pay off
+  // n = -log(1 - r*B/P) / log(1+r)
+  const n = -Math.log(1 - (monthlyRate * balance) / monthlyPayment) / Math.log(1 + monthlyRate);
+  return Math.ceil(n);
+}
+
+// Project balance forward one month applying interest and payment.
+// Used to auto-calculate next month's balance from current month.
+function applyMonthlyAmortization(balance, annualRate, monthlyPayment) {
+  if (balance <= 0) return 0;
+  const monthlyRate = annualRate / 12;
+  const interest = balance * monthlyRate;
+  return Math.max(0, balance + interest - (monthlyPayment || 0));
+}
+
 function renderDebts() {
   const body = document.getElementById('debt-body');
   const yr = calYear, mo = calMonth;
@@ -4246,21 +4352,77 @@ function renderDebts() {
     }
   }
 
-  // Month header
+  // Build sorted index list
+  const indices = monthData.map((_, i) => i);
+  if (debtSortMode === 'balance') {
+    indices.sort((a, b) => {
+      const ba = getEffectiveDebtBalance(monthData[a], prevMonthData[a]);
+      const bb = getEffectiveDebtBalance(monthData[b], prevMonthData[b]);
+      return bb - ba;
+    });
+  } else if (debtSortMode === 'rate') {
+    indices.sort((a, b) => {
+      const ra = parseDebtRate(monthData[a].rate);
+      const rb = parseDebtRate(monthData[b].rate);
+      return rb - ra;
+    });
+  } else if (debtSortMode === 'months') {
+    indices.sort((a, b) => {
+      const da = monthData[a], db = monthData[b];
+      const balA = getEffectiveDebtBalance(da, prevMonthData[a]);
+      const balB = getEffectiveDebtBalance(db, prevMonthData[b]);
+      const mA = calcMonthsRemaining(balA, parseDebtRate(da.rate), (debts[a] || da).payment || 0);
+      const mB = calcMonthsRemaining(balB, parseDebtRate(db.rate), (debts[b] || db).payment || 0);
+      // Paid off (0) goes last, null (no payment/can't cover) goes last too
+      const valA = balA <= 0 ? Infinity : (mA === null ? Infinity : mA);
+      const valB = balB <= 0 ? Infinity : (mB === null ? Infinity : mB);
+      return valA - valB;
+    });
+  }
+
+  // Month header + sort controls
   const header = `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px 6px;background:var(--surface2);border-bottom:1px solid var(--border)">
     <span style="font-family:var(--font-mono, monospace);font-size:0.7143em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">${monthName}${isSnapshot ? '' : ' — default'}</span>
+  </div>
+  <div class="debt-sort-bar">
+    <span>Sort:</span>
+    <button class="debt-sort-btn${debtSortMode==='balance'?' active':''}" onclick="setDebtSort('balance')">Balance ↓</button>
+    <button class="debt-sort-btn${debtSortMode==='months'?' active':''}" onclick="setDebtSort('months')">Months left ↑</button>
+    <button class="debt-sort-btn${debtSortMode==='rate'?' active':''}" onclick="setDebtSort('rate')">Rate ↓</button>
   </div>`;
 
-  body.innerHTML = header + monthData.map((d, i) => {
+  body.innerHTML = header + indices.map(i => {
+    const d = monthData[i];
     const baseDebt = debts[i] || d;
-    const prevBalance = prevMonthData[i] ? prevMonthData[i].balance : null;
+    const prevEntry = prevMonthData[i];
+    const prevBalance = prevEntry ? prevEntry.balance : null;
 
-    // If this month has a payment override, derive the effective balance from prev - override
-    // rather than the raw stored balance, so the payment actually shows up in the diff
+    // Effective balance: if there's a paymentOverride, derive from prev - override
     const effectivePayment = d.paymentOverride !== undefined ? d.paymentOverride : (baseDebt.payment || 0);
-    const displayBalance = (d.paymentOverride !== undefined && prevBalance !== null)
-      ? Math.max(0, prevBalance - d.paymentOverride)
-      : d.balance;
+    const displayBalance = getEffectiveDebtBalance(d, prevEntry);
+
+    // Amortization-based months remaining
+    const annualRate = parseDebtRate(d.rate);
+    const recurringPayment = baseDebt.payment || 0;
+    const monthsLeft = calcMonthsRemaining(displayBalance, annualRate, recurringPayment);
+
+    let monthsStr = '';
+    if (displayBalance <= 0) {
+      monthsStr = `<div class="debt-months-remaining"><span class="mo-paid-off">✓ Paid off</span></div>`;
+    } else if (monthsLeft === null) {
+      if (recurringPayment > 0) {
+        monthsStr = `<div class="debt-months-remaining" style="color:var(--expense-red)">⚠ Payment doesn't cover interest</div>`;
+      } else {
+        monthsStr = `<div class="debt-months-remaining">No payment set</div>`;
+      }
+    } else {
+      const yrs = Math.floor(monthsLeft / 12);
+      const mos = monthsLeft % 12;
+      const label = yrs > 0
+        ? `${yrs}y ${mos > 0 ? mos + 'm' : ''}`.trim()
+        : `${mos}m`;
+      monthsStr = `<div class="debt-months-remaining"><span class="mo-count">${monthsLeft} mo</span> remaining (${label})</div>`;
+    }
 
     // Progress bar uses the base debt max for consistent context
     const baseMax = baseDebt.max || d.max;
@@ -4291,8 +4453,25 @@ function renderDebts() {
       <div class="progress-track">
         <div class="progress-fill" style="width: ${pct}%"></div>
       </div>
+      ${monthsStr}
     </div>
   `}).join('');
+}
+
+// Helper: get the effective display balance for a debt entry
+function getEffectiveDebtBalance(d, prevEntry) {
+  if (!d) return 0;
+  const prevBalance = prevEntry ? prevEntry.balance : null;
+  if (d.paymentOverride !== undefined && prevBalance !== null) {
+    return Math.max(0, prevBalance - d.paymentOverride);
+  }
+  return d.balance;
+}
+
+// Sort control handler
+function setDebtSort(mode) {
+  debtSortMode = mode;
+  renderDebts();
 }
 
 function clearMonthDebts() {
@@ -5247,7 +5426,7 @@ function editDebt(i) {
   document.getElementById('debt-modal-thismonth-wrap').style.display = '';
   document.getElementById('debt-modal-delete-btn').style.display = '';
   document.getElementById('debt-modal').classList.add('open');
-  setTimeout(() => document.getElementById('debt-modal-name').focus(), 150);
+  setTimeout(() => { document.getElementById('debt-modal-name').focus(); updateDebtPreview(); }, 150);
 }
 
 function addDebt() {
@@ -5261,6 +5440,8 @@ function addDebt() {
   document.getElementById('debt-modal-payment-thismonth').value = '';
   document.getElementById('debt-modal-thismonth-wrap').style.display = 'none';
   document.getElementById('debt-modal-delete-btn').style.display = 'none';
+  const preview = document.getElementById('debt-modal-preview');
+  if (preview) preview.style.display = 'none';
   document.getElementById('debt-modal').classList.add('open');
   setTimeout(() => document.getElementById('debt-modal-name').focus(), 150);
 }
@@ -5322,16 +5503,17 @@ function saveDebtModal() {
       if (monthlyDebts[k][i] === undefined) continue;
       const futurePayment = recurringChanged ? payment : (monthlyDebts[k][i].payment || payment);
       if (recurringChanged) {
-        // Re-project balance: use the previous month's balance minus its effective payment
+        // Re-project balance: apply amortization (interest + payment) from prev month's balance
         const [ky, km] = k.split('-').map(Number);
         const prevMo = km === 0 ? 11 : km - 1;
         const prevYr = km === 0 ? ky - 1 : ky;
         const prevSnap = monthlyDebts[monthKey(prevYr, prevMo)];
         const prevEntry = prevSnap && prevSnap[i];
         const prevBal = prevEntry !== undefined ? prevEntry.balance : null;
-        // For projection, always use the recurring payment (not override) from the previous month
-        const prevRecurringPayment = prevEntry ? (prevEntry.payment || 0) : payment;
-        const projectedBalance = prevBal !== null ? Math.max(0, prevBal - prevRecurringPayment) : monthlyDebts[k][i].balance;
+        // For projection, use the recurring payment and rate from this debt
+        const projectedBalance = prevBal !== null
+          ? applyMonthlyAmortization(prevBal, parseDebtRate(rate), payment)
+          : monthlyDebts[k][i].balance;
         monthlyDebts[k][i] = { ...monthlyDebts[k][i], name, max, rate, payment: futurePayment, balance: projectedBalance };
       } else {
         // Only update metadata, leave balance untouched
@@ -5354,6 +5536,36 @@ function saveDebtModal() {
 function closeDebtModal(e) {
   if (e && e.target !== document.getElementById('debt-modal')) return;
   document.getElementById('debt-modal').classList.remove('open');
+}
+
+function updateDebtPreview() {
+  const balance  = parseFloat(document.getElementById('debt-modal-balance').value) || 0;
+  const rateStr  = document.getElementById('debt-modal-rate').value.trim();
+  const payment  = parseFloat(document.getElementById('debt-modal-payment').value) || 0;
+  const preview  = document.getElementById('debt-modal-preview');
+  if (!preview) return;
+  if (!balance || !payment) { preview.style.display = 'none'; return; }
+  const annualRate = parseDebtRate(rateStr);
+  const monthlyRate = annualRate / 12;
+  const interest = balance * monthlyRate;
+  const nextBalance = Math.max(0, balance + interest - payment);
+  const monthsLeft = calcMonthsRemaining(balance, annualRate, payment);
+  let monthsLabel = '';
+  if (nextBalance <= 0) {
+    monthsLabel = '<span style="color:var(--income-green)">Paid off next month ✓</span>';
+  } else if (monthsLeft === null) {
+    monthsLabel = '<span style="color:var(--expense-red)">⚠ Payment doesn\'t cover interest (${fmt(interest)}/mo)</span>';
+  } else {
+    const yrs = Math.floor(monthsLeft / 12), mos = monthsLeft % 12;
+    const timeLabel = yrs > 0 ? `${yrs}y ${mos > 0 ? mos+'m' : ''}`.trim() : `${mos}m`;
+    monthsLabel = `Paid off in <strong style="color:var(--text)">${monthsLeft} months</strong> (${timeLabel})`;
+  }
+  let rows = '';
+  if (annualRate > 0) rows += `<div>Interest this month: <strong style="color:var(--expense-red)">+${fmt(interest)}</strong></div>`;
+  if (nextBalance > 0) rows += `<div>Balance next month: <strong style="color:var(--debt-amber)">${fmt(nextBalance)}</strong></div>`;
+  rows += `<div>${monthsLabel}</div>`;
+  preview.innerHTML = rows;
+  preview.style.display = '';
 }
 
 // ─── INVESTMENT CRUD ─────────────────────────────────────────────
@@ -7896,7 +8108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-field">
         <label>Current Balance (CAD)</label>
-        <input type="number" id="debt-modal-balance" placeholder="0" min="0">
+        <input type="number" id="debt-modal-balance" placeholder="0" min="0" oninput="updateDebtPreview()">
       </div>
       <div class="form-field">
         <label>Credit Limit / Original (CAD)</label>
@@ -7905,12 +8117,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
     <div class="form-field">
       <label>Interest Rate (optional)</label>
-      <input type="text" id="debt-modal-rate" placeholder="e.g. 7.95%">
+      <input type="text" id="debt-modal-rate" placeholder="e.g. 7.95%" oninput="updateDebtPreview()">
     </div>
     <div class="form-field">
       <label>Recurring Monthly Payment (CAD)</label>
-      <input type="number" id="debt-modal-payment" placeholder="0" min="0">
+      <input type="number" id="debt-modal-payment" placeholder="0" min="0" oninput="updateDebtPreview()">
       <div style="font-size:0.7143em;color:var(--muted);margin-top:5px">Applies from this month forward — does not affect past months</div>
+      <div id="debt-modal-preview" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:0.7143em;color:var(--muted);line-height:1.6"></div>
     </div>
     <div id="debt-modal-thismonth-wrap" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:2px">
       <div class="form-field" style="margin-bottom:0">
