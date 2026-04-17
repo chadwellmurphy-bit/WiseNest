@@ -723,6 +723,66 @@
     color: var(--invest-blue);
   }
 
+  /* INVESTMENT TREND MODAL */
+  #invest-trend-modal {
+    position: fixed; inset: 0; z-index: 900;
+    background: rgba(0,0,0,0.65); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  #invest-trend-modal.open { opacity: 1; pointer-events: all; }
+  .trend-card {
+    background: var(--surface); border-radius: 18px;
+    border: 1px solid var(--border);
+    width: min(92vw, 480px); max-height: 85vh;
+    overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+    transform: translateY(12px) scale(0.97);
+    transition: transform 0.22s cubic-bezier(0.34,1.4,0.64,1);
+  }
+  #invest-trend-modal.open .trend-card { transform: none; }
+  .trend-header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .trend-name { font-size: 1.05em; font-weight: 600; }
+  .trend-close-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); cursor: pointer;
+    font-size: 1.1em; width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .trend-close-btn:hover { color: var(--text); border-color: var(--text); }
+  .trend-tabs {
+    display: flex; gap: 6px; padding: 12px 20px 0;
+  }
+  .trend-tab {
+    padding: 5px 12px; border-radius: 20px; font-size: 0.75em;
+    font-family: var(--font-mono); cursor: pointer; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); transition: all 0.15s;
+  }
+  .trend-tab.active {
+    background: var(--invest-blue); color: #fff; border-color: var(--invest-blue);
+  }
+  .trend-chart-wrap {
+    padding: 10px 20px 16px; flex: 1;
+  }
+  .trend-summary {
+    display: flex; gap: 20px; padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .trend-stat { display: flex; flex-direction: column; gap: 2px; }
+  .trend-stat-label {
+    font-family: var(--font-mono); font-size: 0.6em;
+    text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  }
+  .trend-stat-value {
+    font-family: var(--font-mono); font-size: 0.88em; font-weight: 600;
+  }
+
   /* BANK ACCOUNTS */
   .bank-item {
     padding: 14px 20px;
@@ -1758,7 +1818,11 @@
   }
 
   @media (max-width: 480px) {
-    .summary-strip { grid-template-columns: 1fr; }
+    .summary-strip { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .summary-strip .stat-card { padding: 14px 12px; }
+    .summary-strip .stat-card .value { font-size: 1.45em; }
+    .summary-strip .stat-card .label { font-size: 0.62em; margin-bottom: 6px; }
+    .summary-strip .stat-card .sub   { font-size: 0.7em; margin-top: 4px; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .page          { padding: 14px; }
     .top-bar       { padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
@@ -1875,7 +1939,12 @@
   }
 
   @media (max-width: 480px) {
-    .summary-strip { grid-template-columns: 1fr; }
+    .summary-strip { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .summary-strip .stat-card { padding: 14px 12px; }
+    .summary-strip .stat-card .value { font-size: 1.45em; }
+    .summary-strip .stat-card .label { font-size: 0.62em; margin-bottom: 6px; }
+    .summary-strip .stat-card .sub   { font-size: 0.7em; margin-top: 4px; }
+    .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .page          { padding: 14px; }
     .top-bar       { padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
@@ -3862,7 +3931,17 @@ function projectDebtBalance(i, targetYr, targetMo) {
 }
 
 function getInvestsForMonth(yr, mo) {
-  return monthlyInvests[monthKey(yr, mo)] || investments;
+  const k = monthKey(yr, mo);
+  if (monthlyInvests[k]) return monthlyInvests[k];
+  // No snapshot for this month: carry forward the most recent past snapshot
+  const targetKey = k;
+  const keys = Object.keys(monthlyInvests).sort();
+  let bestKey = null;
+  for (const ky of keys) {
+    if (ky <= targetKey) bestKey = ky;
+  }
+  if (bestKey) return monthlyInvests[bestKey];
+  return investments;
 }
 
 // Deep-clone the base arrays into a month snapshot (if not already there)
@@ -3884,7 +3963,15 @@ function ensureMonthDebts(yr, mo) {
 function ensureMonthInvests(yr, mo) {
   const k = monthKey(yr, mo);
   if (!monthlyInvests[k]) {
-    monthlyInvests[k] = JSON.parse(JSON.stringify(investments));
+    // Seed from the most recent past snapshot so values carry forward automatically.
+    // Only fall back to the base investments array if no prior snapshot exists.
+    const keys = Object.keys(monthlyInvests).sort();
+    let bestKey = null;
+    for (const ky of keys) {
+      if (ky < k) bestKey = ky; // strictly less-than: don't seed from self
+    }
+    const source = bestKey ? monthlyInvests[bestKey] : investments;
+    monthlyInvests[k] = JSON.parse(JSON.stringify(source));
   }
   return monthlyInvests[k];
 }
@@ -4245,7 +4332,7 @@ function renderInvestments() {
       : '';
     return `
     <div class="invest-item">
-      <div style="flex:1">
+      <div style="flex:1;cursor:pointer" onclick="openInvestTrend(${i})" title="View trend">
         <div style="font-size:0.9286em;font-weight:500;margin-bottom:6px">${inv.name}</div>
         <div class="progress-track" style="width:120px">
           <div class="progress-fill green" style="width:${pct}%"></div>
@@ -4911,7 +4998,7 @@ document.addEventListener('keydown', e => {
     }
   }
   if (e.key === 'Escape') {
-    ['income-modal','expense-modal','debt-modal','invest-modal','cat-modal','pay-edit-overlay','add-card-modal','bank-modal'].forEach(id => {
+    ['income-modal','expense-modal','debt-modal','invest-modal','cat-modal','pay-edit-overlay','add-card-modal','bank-modal','invest-trend-modal'].forEach(id => {
       document.getElementById(id).classList.remove('open');
     });
     window._calReturnDay = null;
@@ -5322,6 +5409,144 @@ function saveInvestModal() {
 function closeInvestModal(e) {
   if (e && e.target !== document.getElementById('invest-modal')) return;
   document.getElementById('invest-modal').classList.remove('open');
+}
+
+// ─── INVESTMENT TREND CHART ───────────────────────────────────────
+let trendInvestIdx = null;
+let trendPeriodMonths = 3;
+
+function openInvestTrend(i) {
+  trendInvestIdx = i;
+  trendPeriodMonths = 3;
+  // Reset tab states
+  document.querySelectorAll('.trend-tab').forEach((t, idx) => t.classList.toggle('active', idx === 0));
+  renderInvestTrend();
+  document.getElementById('invest-trend-modal').classList.add('open');
+}
+
+function closeInvestTrend(e) {
+  if (e && e.target !== document.getElementById('invest-trend-modal')) return;
+  document.getElementById('invest-trend-modal').classList.remove('open');
+}
+
+function setTrendPeriod(months, btn) {
+  trendPeriodMonths = months;
+  document.querySelectorAll('.trend-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderInvestTrend();
+}
+
+function renderInvestTrend() {
+  const i = trendInvestIdx;
+  if (i === null) return;
+
+  // Collect data points: go back trendPeriodMonths from current calYear/calMonth
+  const points = [];
+  for (let offset = trendPeriodMonths - 1; offset >= 0; offset--) {
+    let mo = calMonth - offset;
+    let yr = calYear;
+    while (mo < 0) { mo += 12; yr--; }
+    const data = getInvestsForMonth(yr, mo);
+    const inv = data[i];
+    const value = inv ? inv.value : null;
+    const label = MONTHS[mo].slice(0, 3) + ' ' + String(yr).slice(2);
+    points.push({ yr, mo, value, label });
+  }
+
+  // Investment name
+  const currentData = getInvestsForMonth(calYear, calMonth);
+  const name = currentData[i] ? currentData[i].name : (investments[i] ? investments[i].name : 'Investment');
+  document.getElementById('trend-modal-name').textContent = name;
+
+  // Filter to points with data
+  const withData = points.filter(p => p.value !== null);
+
+  // Summary stats
+  const fmtT = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-CA');
+  const current = withData.length ? withData[withData.length - 1].value : 0;
+  const first   = withData.length ? withData[0].value : 0;
+  const change  = current - first;
+  const high    = withData.length ? Math.max(...withData.map(p => p.value)) : 0;
+  const low     = withData.length ? Math.min(...withData.map(p => p.value)) : 0;
+
+  document.getElementById('trend-stat-current').textContent = fmtT(current);
+  const changeEl = document.getElementById('trend-stat-change');
+  changeEl.textContent = (change >= 0 ? '+' : '') + fmtT(change);
+  changeEl.style.color = change >= 0 ? 'var(--income-green)' : 'var(--expense-red)';
+  document.getElementById('trend-stat-high').textContent = fmtT(high);
+  document.getElementById('trend-stat-low').textContent = fmtT(low);
+
+  // Draw SVG chart
+  const svg = document.getElementById('trend-svg');
+  const W = 440, H = 160, PAD = { t: 16, r: 10, b: 28, l: 10 };
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  if (withData.length < 2) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="13" font-family="var(--font-sans)">Not enough data yet — update more months!</text>`;
+    return;
+  }
+
+  const vals = withData.map(p => p.value);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+
+  const xScale = (idx) => PAD.l + (idx / (withData.length - 1)) * cW;
+  const yScale = (v)   => PAD.t + cH - ((v - minV) / range) * cH;
+
+  // Build path
+  const pathD = withData.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${xScale(idx).toFixed(1)},${yScale(p.value).toFixed(1)}`).join(' ');
+
+  // Build area fill path (close to bottom)
+  const firstX = xScale(0).toFixed(1);
+  const lastX  = xScale(withData.length - 1).toFixed(1);
+  const bottomY = (PAD.t + cH).toFixed(1);
+  const areaD = pathD + ` L${lastX},${bottomY} L${firstX},${bottomY} Z`;
+
+  // X-axis labels: show first, middle, last  
+  const labelIdxs = withData.length <= 4
+    ? withData.map((_, i) => i)
+    : [0, Math.floor((withData.length - 1) / 2), withData.length - 1];
+  const uniqueLabelIdxs = [...new Set(labelIdxs)];
+
+  const labels = uniqueLabelIdxs.map(idx => {
+    const x = xScale(idx).toFixed(1);
+    const y = (PAD.t + cH + 16).toFixed(1);
+    return `<text x="${x}" y="${y}" text-anchor="middle" fill="var(--muted)" font-size="9.5" font-family="var(--font-mono)">${withData[idx].label}</text>`;
+  }).join('');
+
+  // Dots + tooltips
+  const dots = withData.map((p, idx) => {
+    const cx = xScale(idx).toFixed(1);
+    const cy = yScale(p.value).toFixed(1);
+    const isLast = idx === withData.length - 1;
+    return `<circle cx="${cx}" cy="${cy}" r="${isLast ? 5 : 3.5}" fill="${isLast ? 'var(--invest-blue)' : 'var(--surface)'}" stroke="var(--invest-blue)" stroke-width="2">
+      <title>${p.label}: ${fmtT(p.value)}</title>
+    </circle>`;
+  }).join('');
+
+  // Gridlines (3 horizontal)
+  const gridLines = [0.25, 0.5, 0.75].map(frac => {
+    const y = (PAD.t + cH * (1 - frac)).toFixed(1);
+    const v = minV + range * frac;
+    return `<line x1="${PAD.l}" y1="${y}" x2="${W - PAD.r}" y2="${y}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3"/>
+      <text x="${PAD.l}" y="${(+y - 3).toFixed(1)}" fill="var(--muted)" font-size="8.5" font-family="var(--font-mono)">${fmtT(v)}</text>`;
+  }).join('');
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--invest-blue)" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="var(--invest-blue)" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    <path d="${areaD}" fill="url(#trendGrad)"/>
+    <path d="${pathD}" fill="none" stroke="var(--invest-blue)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+    ${labels}
+  `;
 }
 
 // ─── CATEGORY MANAGEMENT ─────────────────────────────────────────
@@ -7703,6 +7928,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 </div>
 
 <!-- INVEST MODAL -->
+<!-- INVESTMENT TREND MODAL -->
+<div id="invest-trend-modal" onclick="closeInvestTrend(event)">
+  <div class="trend-card">
+    <div class="trend-header">
+      <div>
+        <div class="trend-stat-label" style="margin-bottom:2px">Investment Trend</div>
+        <div class="trend-name" id="trend-modal-name">TFSA</div>
+      </div>
+      <button class="trend-close-btn" onclick="closeInvestTrend()">✕</button>
+    </div>
+    <div class="trend-tabs">
+      <button class="trend-tab active" onclick="setTrendPeriod(3,this)">3 mo</button>
+      <button class="trend-tab" onclick="setTrendPeriod(6,this)">6 mo</button>
+      <button class="trend-tab" onclick="setTrendPeriod(12,this)">1 yr</button>
+      <button class="trend-tab" onclick="setTrendPeriod(24,this)">2 yr</button>
+    </div>
+    <div class="trend-chart-wrap">
+      <svg id="trend-svg" width="100%" style="display:block;overflow:visible" viewBox="0 0 440 160" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="trend-summary">
+      <div class="trend-stat">
+        <div class="trend-stat-label">Current</div>
+        <div class="trend-stat-value" id="trend-stat-current" style="color:var(--invest-blue)">—</div>
+      </div>
+      <div class="trend-stat">
+        <div class="trend-stat-label">Period Change</div>
+        <div class="trend-stat-value" id="trend-stat-change">—</div>
+      </div>
+      <div class="trend-stat">
+        <div class="trend-stat-label">Period High</div>
+        <div class="trend-stat-value" id="trend-stat-high" style="color:var(--income-green)">—</div>
+      </div>
+      <div class="trend-stat">
+        <div class="trend-stat-label">Period Low</div>
+        <div class="trend-stat-value" id="trend-stat-low" style="color:var(--expense-red)">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="invest-modal" onclick="closeInvestModal(event)">
   <div class="modal">
     <h2 id="invest-modal-title">Edit Investment — Feb 2026</h2>
