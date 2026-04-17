@@ -5397,7 +5397,6 @@ function saveExpenseModal() {
 
   document.getElementById('expense-modal').classList.remove('open');
   renderExpenses();
-  updateSummary();
   reopenSection('expense-body');
   if (window._calReturnDay) {
     const { yr, mo, day } = window._calReturnDay;
@@ -5405,6 +5404,7 @@ function saveExpenseModal() {
     calYear = yr; calMonth = mo; calDrillDay = day;
     renderCalendar();
   }
+  updateSummary();
 }
 
 function closeExpenseModal(e) {
@@ -6634,12 +6634,15 @@ function drawDonut(total) {
   const ctx = canvas.getContext('2d');
   const cx = 60, cy = 60, r = 48, inner = 30;
 
-  // Aggregate by category
+  // Aggregate by category — use per-month category and respect start date
   const cats = {};
   budget.expenses.forEach(e => {
-    const amt = getExpenseAmount(e.id);
-    if (!cats[e.category]) cats[e.category] = 0;
-    cats[e.category] += amt;
+    // Skip expenses that haven't started yet in the viewed month
+    if (e.startYr !== undefined && (calYear < e.startYr || (calYear === e.startYr && calMonth < e.startMo))) return;
+    const amt = getExpenseAmountForMonth(e.id, calYear, calMonth);
+    const cat = getExpenseCategoryForMonth(e.id, calYear, calMonth) || e.category || 'Other';
+    if (!cats[cat]) cats[cat] = 0;
+    cats[cat] += amt;
   });
 
   // Exclude refund items (negative amounts) from the pie — they reduce the total but don't get a slice
