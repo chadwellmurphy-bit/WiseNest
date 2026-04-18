@@ -4005,9 +4005,35 @@ function getDebtsForMonth(yr, mo) {
       }
     }
 
-    // For debts with a schedule or balance override, ALWAYS use projectDebtBalance
-    // so that all months are calculated consistently from the single source of truth.
-    // Only check for a paymentOverride snapshot (this-month-only payment override).
+    // For revolving debts: find the most recent snapshot at or before this month,
+    // then project forward from it. Past months are never affected by future edits.
+    if (baseDebt.debtType === 'revolving') {
+      const targetV = monthVal(yr, mo);
+      let anchorV = -1, anchorBal = baseDebt.balance || 0;
+      let anchorPayment = baseDebt.payment || 0, anchorRate = baseDebt.rate || '';
+      Object.keys(monthlyDebts).forEach(function(k) {
+        if (!monthlyDebts[k] || monthlyDebts[k][i] == null) return;
+        const parts = k.split('-').map(Number);
+        const kv = monthVal(parts[0], parts[1]);
+        if (kv <= targetV && kv > anchorV) {
+          anchorV = kv;
+          anchorBal = monthlyDebts[k][i].balance;
+          anchorPayment = monthlyDebts[k][i].payment || baseDebt.payment || 0;
+          anchorRate = monthlyDebts[k][i].rate || baseDebt.rate || '';
+        }
+      });
+      if (anchorV < 0) return Object.assign({}, baseDebt, { balance: baseDebt.balance || 0 });
+      // Project forward from anchor to target
+      let bal = anchorBal;
+      let ay = Math.floor(anchorV / 12), am = anchorV % 12;
+      while (monthVal(ay, am) < targetV) {
+        am++; if (am > 11) { am = 0; ay++; }
+        bal = Math.max(0, applyMonthlyAmortization(bal, parseDebtRate(anchorRate), anchorPayment, ay, am));
+      }
+      return Object.assign({}, baseDebt, { balance: bal });
+    }
+
+    // For scheduled/override debts: always use projectDebtBalance
     const hasScheduleOrOverride = (baseDebt.startDate && baseDebt.max && baseDebt.payment) || baseDebt.balanceOverride;
     if (hasScheduleOrOverride) {
       // Check if there's a payment override snapshot for this specific month
@@ -4650,14 +4676,10 @@ function renderDebts() {
       var yrs = Math.floor(monthsLeft / 12);
       var mos = monthsLeft % 12;
       var label = yrs > 0 ? (yrs + 'y' + (mos > 0 ? ' ' + mos + 'm' : '')) : (mos + 'm');
-      var payoffLabel = '';
-      if (baseDebt.startDate && baseDebt.termMonths > 0) {
-        var sdParts = baseDebt.startDate.split('-').map(Number);
-        var totalEnd = (sdParts[1] - 1) + baseDebt.termMonths;
-        var endMo = totalEnd % 12;
-        var endYr = sdParts[0] + Math.floor(totalEnd / 12);
-        payoffLabel = ' \u00b7 paid off ' + MONTHS[endMo] + ' ' + endYr;
-      }
+      // Calculate payoff date from current month + months remaining
+      var payoffMo = (mo + monthsLeft) % 12;
+      var payoffYr = yr + Math.floor((mo + monthsLeft) / 12);
+      var payoffLabel = ' \u00b7 paid off ' + MONTHS[payoffMo] + ' ' + payoffYr;
       monthsStr = '<div class="debt-months-remaining"><span class="mo-count">' + monthsLeft + ' mo</span> remaining (' + label + ')' + payoffLabel + '</div>';
     }
 
@@ -5622,6 +5644,21 @@ function closeExpenseModal(e) {
 // ─── DEBT CRUD ───────────────────────────────────────────────────
 let debtEditIdx = null;
 
+let debtModalType = 'loan'; // 'loan' | 'revolving'
+
+function setDebtType(type) {
+  debtModalType = type;
+  document.getElementById('debt-type-loan').style.background = type === 'loan' ? 'var(--debt-amber)' : 'none';
+  document.getElementById('debt-type-loan').style.color = type === 'loan' ? '#1a1a1a' : 'var(--muted)';
+  document.getElementById('debt-type-loan').style.fontWeight = type === 'loan' ? '600' : '400';
+  document.getElementById('debt-type-revolving').style.background = type === 'revolving' ? 'var(--debt-amber)' : 'none';
+  document.getElementById('debt-type-revolving').style.color = type === 'revolving' ? '#1a1a1a' : 'var(--muted)';
+  document.getElementById('debt-type-revolving').style.fontWeight = type === 'revolving' ? '600' : '400';
+  document.getElementById('debt-loan-fields').style.display = type === 'loan' ? '' : 'none';
+  document.getElementById('debt-revolving-fields').style.display = type === 'revolving' ? '' : 'none';
+  updateDebtPreview();
+}
+
 function editDebt(i) {
   debtEditIdx = i;
   const monthData = getDebtsForMonth(calYear, calMonth);
@@ -5630,9 +5667,6 @@ function editDebt(i) {
   const monthLabel = MONTHS[calMonth] + ' ' + calYear;
   document.getElementById('debt-modal-title').textContent = 'Edit Debt \u2014 ' + monthLabel;
   document.getElementById('debt-modal-name').value = d.name;
-  document.getElementById('debt-modal-max').value = baseDebt.max || '';
-  // Current balance: only pre-fill if manually overridden
-  document.getElementById('debt-modal-balance').value = baseDebt.balanceOverride ? d.balance : '';
   document.getElementById('debt-modal-rate').value = d.rate;
   document.getElementById('debt-modal-payment').value = baseDebt.payment || '';
   document.getElementById('debt-modal-startdate').value = baseDebt.startDate || '';
@@ -5642,6 +5676,19 @@ function editDebt(i) {
   document.getElementById('debt-modal-thismonth-label').textContent = monthLabel;
   document.getElementById('debt-modal-thismonth-wrap').style.display = '';
   document.getElementById('debt-modal-delete-btn').style.display = '';
+
+  // Set type and populate type-specific fields
+  const isRevolving = baseDebt.debtType === 'revolving';
+  setDebtType(isRevolving ? 'revolving' : 'loan');
+  if (isRevolving) {
+    document.getElementById('debt-modal-max-rev').value = baseDebt.max || '';
+    document.getElementById('debt-modal-balance-rev').value = d.balance || '';
+    document.getElementById('debt-modal-month-label-rev').textContent = monthLabel;
+  } else {
+    document.getElementById('debt-modal-max').value = baseDebt.max || '';
+    document.getElementById('debt-modal-balance').value = baseDebt.balanceOverride ? d.balance : '';
+  }
+
   document.getElementById('debt-modal').classList.add('open');
   setTimeout(function() { document.getElementById('debt-modal-name').focus(); updateDebtPreview(); }, 150);
 }
@@ -5652,6 +5699,8 @@ function addDebt() {
   document.getElementById('debt-modal-name').value = '';
   document.getElementById('debt-modal-max').value = '';
   document.getElementById('debt-modal-balance').value = '';
+  document.getElementById('debt-modal-max-rev').value = '';
+  document.getElementById('debt-modal-balance-rev').value = '';
   document.getElementById('debt-modal-rate').value = '';
   document.getElementById('debt-modal-payment').value = '';
   document.getElementById('debt-modal-startdate').value = '';
@@ -5659,8 +5708,10 @@ function addDebt() {
   document.getElementById('debt-modal-payment-thismonth').value = '';
   document.getElementById('debt-modal-thismonth-wrap').style.display = 'none';
   document.getElementById('debt-modal-delete-btn').style.display = 'none';
+  document.getElementById('debt-modal-month-label-rev').textContent = MONTHS[calMonth] + ' ' + calYear;
   const preview = document.getElementById('debt-modal-preview');
   if (preview) preview.style.display = 'none';
+  setDebtType('loan');
   document.getElementById('debt-modal').classList.add('open');
   setTimeout(function() { document.getElementById('debt-modal-name').focus(); }, 150);
 }
@@ -5681,19 +5732,24 @@ function deleteDebt(i) {
 
 function saveDebtModal() {
   const name         = document.getElementById('debt-modal-name').value.trim();
-  const max          = parseFloat(document.getElementById('debt-modal-max').value) || 0;
-  const balanceRaw   = document.getElementById('debt-modal-balance').value.trim();
   const rate         = document.getElementById('debt-modal-rate').value.trim();
   const paymentRaw   = document.getElementById('debt-modal-payment').value.trim();
   const thisMonthRaw = document.getElementById('debt-modal-payment-thismonth').value.trim();
   const paymentOverride = thisMonthRaw !== '' ? (parseFloat(thisMonthRaw) || 0) : undefined;
-  const startDate    = document.getElementById('debt-modal-startdate').value.trim();
-  const termMonths   = parseInt(document.getElementById('debt-modal-term').value) || 0;
   if (!name) { document.getElementById('debt-modal-name').focus(); return; }
 
-  // If current balance box is filled, treat as manual anchor; otherwise derive from schedule
-  const balanceOverride = balanceRaw !== '';
-  const manualBalance   = balanceOverride ? (parseFloat(balanceRaw) || 0) : null;
+  const isRevolving = debtModalType === 'revolving';
+  const max = isRevolving
+    ? (parseFloat(document.getElementById('debt-modal-max-rev').value) || 0)
+    : (parseFloat(document.getElementById('debt-modal-max').value) || 0);
+  const currentBalRaw = isRevolving
+    ? document.getElementById('debt-modal-balance-rev').value.trim()
+    : document.getElementById('debt-modal-balance').value.trim();
+  const startDate  = isRevolving ? null : document.getElementById('debt-modal-startdate').value.trim();
+  const termMonths = isRevolving ? 0   : (parseInt(document.getElementById('debt-modal-term').value) || 0);
+  const currentBal = currentBalRaw !== '' ? (parseFloat(currentBalRaw) || 0) : null;
+  const balanceOverride = !isRevolving && currentBalRaw !== '';
+  const manualBalance   = balanceOverride ? currentBal : null;
 
   function resolveBalance(targetYr, targetMo, payment) {
     if (manualBalance !== null) return manualBalance;
@@ -5704,19 +5760,36 @@ function saveDebtModal() {
     return max;
   }
 
+  function sortedFutureKeys() {
+    return Object.keys(monthlyDebts).filter(function(k) {
+      const parts = k.split('-').map(Number);
+      return monthVal(parts[0], parts[1]) > monthVal(calYear, calMonth);
+    }).sort(function(a, b) {
+      const ap = a.split('-').map(Number), bp = b.split('-').map(Number);
+      return monthVal(ap[0], ap[1]) - monthVal(bp[0], bp[1]);
+    });
+  }
+
+  function wipeSnapshots(idx) {
+    Object.keys(monthlyDebts).forEach(function(k) {
+      if (monthlyDebts[k][idx] != null && monthlyDebts[k][idx].paymentOverride === undefined) {
+        delete monthlyDebts[k][idx];
+        if (Object.values(monthlyDebts[k]).every(function(v) { return v === undefined; })) delete monthlyDebts[k];
+      }
+    });
+  }
+
   pushUndo();
-  const curKey = monthKey(calYear, calMonth);
   const i = debtEditIdx;
-  const hasSchedule = !!(startDate && max && !balanceOverride);
+  const hasSchedule = !isRevolving && !!(startDate && max && !balanceOverride);
 
   if (i !== null) {
-    // ── EDIT EXISTING DEBT ──────────────────────────────────────────
     const existingPayment = debts[i] ? (debts[i].payment || 0) : 0;
     const payment = paymentRaw !== '' ? (parseFloat(paymentRaw) || 0) : existingPayment;
 
-    // Update base debt record
     debts[i] = Object.assign({}, debts[i], {
       name, max, rate, payment,
+      debtType: isRevolving ? 'revolving' : 'loan',
       startDate: startDate || null,
       termMonths: termMonths || 0,
       balanceOverride,
@@ -5725,68 +5798,55 @@ function saveDebtModal() {
       overrideMo: balanceOverride ? calMonth : undefined
     });
 
-    if (hasSchedule) {
-      // Pure schedule mode: wipe any stale non-override snapshots so schedule takes over
-      Object.keys(monthlyDebts).forEach(function(k) {
-        if (monthlyDebts[k][i] != null && monthlyDebts[k][i].paymentOverride === undefined) {
-          delete monthlyDebts[k][i];
-          if (Object.keys(monthlyDebts[k]).filter(function(x) { return monthlyDebts[k][x] !== undefined; }).length === 0) {
-            delete monthlyDebts[k];
-          }
-        }
-      });
-      if (paymentOverride !== undefined) {
-        const monthData = ensureMonthDebts(calYear, calMonth);
-        monthData[i] = Object.assign({}, monthData[i], { paymentOverride });
-      }
-    } else if (balanceOverride) {
-      // Manual balance override: store anchor on debts[i], wipe all snapshots for this debt
-      // so projectDebtBalance can project forward AND backward from the anchor month.
-      Object.keys(monthlyDebts).forEach(function(k) {
-        if (monthlyDebts[k][i] != null && monthlyDebts[k][i].paymentOverride === undefined) {
-          delete monthlyDebts[k][i];
-          if (Object.keys(monthlyDebts[k]).filter(function(x) { return monthlyDebts[k][x] !== undefined; }).length === 0) {
-            delete monthlyDebts[k];
-          }
-        }
-      });
-      // If there's a this-month payment override, still write that snapshot
-      if (paymentOverride !== undefined) {
-        const monthData = ensureMonthDebts(calYear, calMonth);
-        monthData[i] = Object.assign({}, monthData[i], { paymentOverride });
-      }
-    } else {
-      // No schedule, no override: write a snapshot for this month and project forward
-      const effectiveBalance = resolveBalance(calYear, calMonth, payment);
-      const monthData = ensureMonthDebts(calYear, calMonth);
-      monthData[i] = Object.assign({}, monthData[i], { name, max, rate, balance: effectiveBalance, payment });
-      if (paymentOverride !== undefined) {
-        monthData[i].paymentOverride = paymentOverride;
-      } else {
-        delete monthData[i].paymentOverride;
-      }
-      // Update any existing future snapshots
-      const futureKeys = Object.keys(monthlyDebts).filter(function(k) { return k > curKey; }).sort();
-      futureKeys.forEach(function(k) {
+    if (isRevolving) {
+      // Snapshot this month only — past untouched, future projects forward
+      const revBal = currentBal !== null ? currentBal : (debts[i].balance || 0);
+      const snap = ensureMonthDebts(calYear, calMonth);
+      snap[i] = { name, max, rate, balance: revBal, payment, debtType: 'revolving' };
+      if (paymentOverride !== undefined) snap[i].paymentOverride = paymentOverride;
+      // Re-project any existing future snapshots forward from this new balance
+      let rollingBal = revBal;
+      sortedFutureKeys().forEach(function(k) {
         if (monthlyDebts[k][i] == null) return;
-        const kParts = k.split('-').map(Number);
-        const ky = kParts[0], km = kParts[1];
-        const prevMo2 = km === 0 ? 11 : km - 1;
-        const prevYr2 = km === 0 ? ky - 1 : ky;
-        const prevSnap = monthlyDebts[monthKey(prevYr2, prevMo2)];
-        const prevBal = prevSnap && prevSnap[i] != null ? prevSnap[i].balance : null;
-        const futureBal = prevBal !== null ? applyMonthlyAmortization(prevBal, parseDebtRate(rate), payment) : monthlyDebts[k][i].balance;
-        monthlyDebts[k][i] = Object.assign({}, monthlyDebts[k][i], { name, max, rate, payment, balance: Math.max(0, futureBal) });
+        const parts = k.split('-').map(Number);
+        rollingBal = Math.max(0, applyMonthlyAmortization(rollingBal, parseDebtRate(rate), payment, parts[0], parts[1]));
+        monthlyDebts[k][i] = Object.assign({}, monthlyDebts[k][i], { name, max, rate, payment, balance: rollingBal, debtType: 'revolving' });
+        delete monthlyDebts[k][i].paymentOverride;
+      });
+
+    } else if (hasSchedule || balanceOverride) {
+      // Schedule or override: wipe stale snapshots and let projectDebtBalance handle everything
+      wipeSnapshots(i);
+      if (paymentOverride !== undefined) {
+        const snap = ensureMonthDebts(calYear, calMonth);
+        snap[i] = Object.assign({}, snap[i] || {}, { paymentOverride });
+      }
+
+    } else {
+      // Simple loan, no schedule: snapshot this month, project future snapshots forward
+      const effectiveBalance = resolveBalance(calYear, calMonth, payment);
+      const snap = ensureMonthDebts(calYear, calMonth);
+      snap[i] = Object.assign({}, snap[i], { name, max, rate, balance: effectiveBalance, payment });
+      if (paymentOverride !== undefined) snap[i].paymentOverride = paymentOverride;
+      else delete snap[i].paymentOverride;
+      let rollingBal = effectiveBalance;
+      sortedFutureKeys().forEach(function(k) {
+        if (monthlyDebts[k][i] == null) return;
+        const parts = k.split('-').map(Number);
+        rollingBal = Math.max(0, applyMonthlyAmortization(rollingBal, parseDebtRate(rate), payment, parts[0], parts[1]));
+        monthlyDebts[k][i] = Object.assign({}, monthlyDebts[k][i], { name, max, rate, payment, balance: rollingBal });
         delete monthlyDebts[k][i].paymentOverride;
       });
     }
 
   } else {
-    // ── ADD NEW DEBT ────────────────────────────────────────────────
+    // New debt
     const payment = parseFloat(paymentRaw) || 0;
+    const initBal = isRevolving ? (currentBal !== null ? currentBal : 0) : resolveBalance(calYear, calMonth, payment);
     const obj = {
       name, max, rate, payment,
-      balance: resolveBalance(calYear, calMonth, payment),
+      balance: initBal,
+      debtType: isRevolving ? 'revolving' : 'loan',
       startDate: startDate || null,
       termMonths: termMonths || 0,
       balanceOverride,
@@ -5795,13 +5855,10 @@ function saveDebtModal() {
       overrideMo: balanceOverride ? calMonth : undefined
     };
     debts.push(obj);
-
-    if (!hasSchedule) {
-      // No schedule — anchor to current month so it shows up
+    if (isRevolving || !hasSchedule) {
       ensureMonthDebts(calYear, calMonth).push(Object.assign({}, obj));
     }
-    // With a schedule: projectDebtBalance handles all months automatically —
-    // no snapshot needed. The new debt will appear in every month via getDebtsForMonth.
+    // Pure schedule: projectDebtBalance handles all months, no snapshot needed
   }
   document.getElementById('debt-modal').classList.remove('open');
   renderDebts();
@@ -8425,25 +8482,44 @@ document.addEventListener('DOMContentLoaded', async () => {
       <label>Name</label>
       <input type="text" id="debt-modal-name" placeholder="e.g. CIBC Line of Credit">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-field">
-        <label>Credit Limit / Original Amount (CAD)</label>
-        <input type="number" id="debt-modal-max" placeholder="0" min="0" step="0.01" oninput="updateDebtPreview()">
+    <div style="display:flex;gap:0;margin-bottom:16px;background:var(--surface2);border-radius:10px;padding:3px">
+      <button id="debt-type-loan" onclick="setDebtType('loan')" style="flex:1;padding:7px 0;border:none;border-radius:8px;font-family:var(--font-sans);font-size:0.85em;cursor:pointer;transition:all .15s;background:var(--debt-amber);color:#1a1a1a;font-weight:600">Loan / Fixed</button>
+      <button id="debt-type-revolving" onclick="setDebtType('revolving')" style="flex:1;padding:7px 0;border:none;border-radius:8px;font-family:var(--font-sans);font-size:0.85em;cursor:pointer;transition:all .15s;background:none;color:var(--muted)">Revolving / LOC</button>
+    </div>
+    <div id="debt-loan-fields">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-field">
+          <label>Credit Limit / Original Amount (CAD)</label>
+          <input type="number" id="debt-modal-max" placeholder="0" min="0" step="0.01" oninput="updateDebtPreview()">
+        </div>
+        <div class="form-field">
+          <label>Current Balance (CAD) <span style="font-weight:400;color:var(--muted);font-size:0.82em">&#8212; override</span></label>
+          <input type="number" id="debt-modal-balance" placeholder="Auto from schedule" min="0" step="0.01" oninput="updateDebtPreview()">
+        </div>
       </div>
-      <div class="form-field">
-        <label>Current Balance (CAD) <span style="font-weight:400;color:var(--muted);font-size:0.82em">&#8212; override</span></label>
-        <input type="number" id="debt-modal-balance" placeholder="Auto from schedule" min="0" step="0.01" oninput="updateDebtPreview()">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-field">
+          <label>Contract Start Date</label>
+          <input type="month" id="debt-modal-startdate" oninput="updateDebtPreview()">
+        </div>
+        <div class="form-field">
+          <label>Term (months)</label>
+          <input type="number" id="debt-modal-term" placeholder="e.g. 60" min="1" oninput="updateDebtPreview()">
+        </div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-field">
-        <label>Contract Start Date</label>
-        <input type="month" id="debt-modal-startdate" oninput="updateDebtPreview()">
+    <div id="debt-revolving-fields" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-field">
+          <label>Credit Limit (CAD)</label>
+          <input type="number" id="debt-modal-max-rev" placeholder="0" min="0" step="0.01">
+        </div>
+        <div class="form-field">
+          <label>Current Balance (CAD)</label>
+          <input type="number" id="debt-modal-balance-rev" placeholder="0" min="0" step="0.01" oninput="updateDebtPreview()">
+        </div>
       </div>
-      <div class="form-field">
-        <label>Term (months)</label>
-        <input type="number" id="debt-modal-term" placeholder="e.g. 60" min="1" oninput="updateDebtPreview()">
-      </div>
+      <div style="font-size:0.7143em;color:var(--muted);margin-bottom:14px;line-height:1.5">Balance entered here applies to <strong style="color:var(--text)" id="debt-modal-month-label-rev">this month</strong> only. Past months are unchanged. Future months project forward from this balance.</div>
     </div>
     <div class="form-field">
       <label>Interest Rate (optional)</label>
