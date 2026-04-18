@@ -3455,6 +3455,13 @@ function loadState() {
     if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
     if (saved.mortgageData) Object.assign(mortgageData, saved.mortgageData);
 
+    // Sanitize monthlyDebts: strip null holes from old snapshots
+    Object.keys(monthlyDebts).forEach(function(k) {
+      if (!Array.isArray(monthlyDebts[k])) { delete monthlyDebts[k]; return; }
+      monthlyDebts[k] = monthlyDebts[k].filter(function(entry) { return entry != null; });
+      if (monthlyDebts[k].length === 0) delete monthlyDebts[k];
+    });
+
     // Fill in any missing amounts from baked defaults
     budget.expenses.forEach(e => {
       if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0;
@@ -3520,12 +3527,53 @@ async function pullFromGist() {
       'X-GitHub-Api-Version': '2022-11-28',
     },
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`;
+    try { const j = await res.json(); errMsg += ': ' + (j.message || JSON.stringify(j)); } catch(e) {}
+    throw new Error(errMsg);
+  }
   const data = await res.json();
   const file = data.files && data.files['budget-data.json'];
   if (!file) throw new Error('budget-data.json not found in Gist');
-  const content = file.content || file.raw_url && await (await fetch(file.raw_url)).text();
+  // Always fetch via raw_url — file.content is truncated by GitHub for files > 1MB
+  let content;
+  if (file.raw_url) {
+    const rawRes = await fetch(file.raw_url, {
+      headers: { 'Authorization': `Bearer ${gistToken()}` }
+    });
+    if (!rawRes.ok) throw new Error('Could not fetch raw file: HTTP ' + rawRes.status);
+    content = await rawRes.text();
+  } else {
+    content = file.content;
+  }
+  if (!content) throw new Error('Gist file is empty');
   return JSON.parse(content);
+}
+
+function saveGistConfig() {
+  const token = document.getElementById('gist-token-input').value.trim();
+  const id    = document.getElementById('gist-id-input').value.trim();
+  const diagBox = document.getElementById('gist-diag-box');
+  if (!token || !id) { alert('Please enter both the token and Gist ID.'); return; }
+  localStorage.setItem('gist_token', token);
+  localStorage.setItem('gist_id', id);
+  diagBox.style.display = 'none';
+  closeGistSetup();
+  setSyncStatus('syncing', 'Connecting\u2026');
+  loadFromGist().then(ok => {
+    if (ok) {
+      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
+      setSyncStatus('ok', '\u2713 Logged in');
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    } else {
+      setSyncStatus('error', 'Could not load data \u2014 tap to retry');
+      setTimeout(() => setSyncStatus('idle'), 6000);
+    }
+  }).catch(err => {
+    setSyncStatus('error', 'Error: ' + (err.message || 'unknown'));
+    setTimeout(() => setSyncStatus('idle'), 6000);
+  });
 }
 
 async function loadFromGist() {
@@ -3556,7 +3604,16 @@ async function loadFromGist() {
       });
     }
     if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
+    if (saved.mortgageData)    Object.assign(mortgageData, saved.mortgageData);
     ensureBankIds();
+
+    // Sanitize monthlyDebts: remove null/undefined entries that can cause crashes
+    // (old snapshots may have null holes from deleted debts)
+    Object.keys(monthlyDebts).forEach(function(k) {
+      if (!Array.isArray(monthlyDebts[k])) { delete monthlyDebts[k]; return; }
+      monthlyDebts[k] = monthlyDebts[k].filter(function(entry) { return entry != null; });
+      if (monthlyDebts[k].length === 0) delete monthlyDebts[k];
+    });
     budget.expenses.forEach(e => { if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0; });
     budget.income.forEach(i =>   { if (incomeAmounts[i.id]  === undefined) incomeAmounts[i.id]  = i.amount || 0; });
     // also persist locally as fallback
@@ -3565,7 +3622,7 @@ async function loadFromGist() {
     });
     return true;
   } catch(e) {
-    console.warn('Gist load failed:', e.message);
+    console.warn('Gist load failed:', e.message, e.stack);
     return false;
   }
 }
@@ -3576,25 +3633,47 @@ function showGistSetup() {
 function closeGistSetup() {
   document.getElementById('gist-setup-modal').classList.remove('open');
 }
-function saveGistConfig() {
+
+async function testGistConnection() {
+  const diagBox = document.getElementById('gist-diag-box');
   const token = document.getElementById('gist-token-input').value.trim();
   const id    = document.getElementById('gist-id-input').value.trim();
-  if (!token || !id) { alert('Please enter both the token and Gist ID.'); return; }
-  localStorage.setItem('gist_token', token);
-  localStorage.setItem('gist_id', id);
-  closeGistSetup();
-  updateSyncStatus('idle');
-  // immediately pull data from gist
-  setSyncStatus('syncing');
-  loadFromGist().then(ok => {
-    if (ok) {
-      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
-      setSyncStatus('ok', '✓ Logged in');
-    } else {
-      setSyncStatus('error', 'Could not load — check your token and ID');
+  diagBox.style.display = 'block';
+  diagBox.style.color = 'var(--muted)';
+  diagBox.textContent = 'Testing\u2026';
+  if (!token || !id) {
+    diagBox.style.color = 'var(--expense-red)';
+    diagBox.textContent = 'Please enter both a token and Gist ID first.';
+    return;
+  }
+  try {
+    const authRes = await fetch('https://api.github.com/user', {
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!authRes.ok) {
+      const j = await authRes.json().catch(function() { return {}; });
+      diagBox.style.color = 'var(--expense-red)';
+      diagBox.textContent = 'Token rejected: HTTP ' + authRes.status + ' \u2014 ' + (j.message || 'unknown. Regenerate token with gist scope.');
+      return;
     }
-  });
+    const user = await authRes.json();
+    const gistRes = await fetch('https://api.github.com/gists/' + id, {
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!gistRes.ok) {
+      const j = await gistRes.json().catch(function() { return {}; });
+      diagBox.style.color = 'var(--expense-red)';
+      diagBox.textContent = 'Token OK (as ' + user.login + ') but Gist not found: HTTP ' + gistRes.status + ' \u2014 ' + (j.message || 'check your Gist ID');
+      return;
+    }
+    const gist = await gistRes.json();
+    const hasFile = !!(gist.files && gist.files['budget-data.json']);
+    diagBox.style.color = 'var(--income-green)';
+    diagBox.textContent = '\u2713 Connected as ' + user.login + '. Gist found' + (hasFile ? ' with budget-data.json.' : ' but budget-data.json missing \u2014 save first to create it.');
+  } catch(e) {
+    diagBox.style.color = 'var(--expense-red)';
+    diagBox.textContent = 'Network error: ' + e.message;
+  }
 }
 
 function setSyncStatus(state, msg) {
@@ -3932,14 +4011,15 @@ function getDebtsForMonth(yr, mo) {
     }
 
     // If a snapshot exists for this month AND this debt index, honour it
-    if (snapshot && snapshot[i] !== undefined) {
+    // Guard against null slots (JSON serialization of sparse arrays produces null)
+    if (snapshot && snapshot[i] != null) {
       const snap = snapshot[i];
       // If there's a payment override, derive balance from previous month
       if (snap.paymentOverride !== undefined) {
         const prevMo = mo === 0 ? 11 : mo - 1;
         const prevYr = mo === 0 ? yr - 1 : yr;
         const prevSnap = monthlyDebts[monthKey(prevYr, prevMo)];
-        const prevBal = prevSnap && prevSnap[i] !== undefined ? prevSnap[i].balance : null;
+        const prevBal = prevSnap && prevSnap[i] != null ? prevSnap[i].balance : null;
         const bal = prevBal !== null ? Math.max(0, prevBal - snap.paymentOverride) : snap.balance;
         return Object.assign({}, snap, { balance: bal });
       }
@@ -4022,7 +4102,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
     const targetKey = monthKey(targetYr, targetMo);
     let anchorKey = null, anchorYr, anchorMo;
     for (const k of keys) {
-      if (monthlyDebts[k][i] !== undefined) { anchorKey = k; break; }
+      if (monthlyDebts[k][i] != null) { anchorKey = k; break; }
     }
     if (anchorKey) {
       [anchorYr, anchorMo] = anchorKey.split('-').map(Number);
@@ -4044,7 +4124,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
 
   let startKey = null, startYr, startMo;
   for (const k of keys) {
-    if (k <= targetKey && monthlyDebts[k][i] !== undefined) {
+    if (k <= targetKey && monthlyDebts[k][i] != null) {
       startKey = k;
       [startYr, startMo] = k.split('-').map(Number);
     }
@@ -4056,7 +4136,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
       const prevMo2 = startMo === 0 ? 11 : startMo - 1;
       const prevYr2 = startMo === 0 ? startYr - 1 : startYr;
       const prevSnap2 = monthlyDebts[monthKey(prevYr2, prevMo2)];
-      const prevBal2 = prevSnap2 && prevSnap2[i] !== undefined ? prevSnap2[i].balance : null;
+      const prevBal2 = prevSnap2 && prevSnap2[i] != null ? prevSnap2[i].balance : null;
       return prevBal2 !== null ? Math.max(0, prevBal2 - snap.paymentOverride) : snap.balance;
     }
     return snap.balance;
@@ -4068,7 +4148,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
     const prevMo3 = startMo === 0 ? 11 : startMo - 1;
     const prevYr3 = startMo === 0 ? startYr - 1 : startYr;
     const prevSnap3 = monthlyDebts[monthKey(prevYr3, prevMo3)];
-    const prevBal3 = prevSnap3 && prevSnap3[i] !== undefined ? prevSnap3[i].balance : null;
+    const prevBal3 = prevSnap3 && prevSnap3[i] != null ? prevSnap3[i].balance : null;
     bal = prevBal3 !== null ? Math.max(0, prevBal3 - anchorSnap.paymentOverride) : anchorSnap.balance;
   } else {
     bal = anchorSnap.balance;
@@ -4080,7 +4160,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
   while (monthKey(y, m) < targetKey) {
     m++; if (m > 11) { m = 0; y++; }
     const k = monthKey(y, m);
-    if (monthlyDebts[k] && monthlyDebts[k][i] !== undefined) {
+    if (monthlyDebts[k] && monthlyDebts[k][i] != null) {
       const snap = monthlyDebts[k][i];
       if (snap.paymentOverride !== undefined) {
         bal = Math.max(0, bal - snap.paymentOverride);
@@ -5580,7 +5660,7 @@ function debtModalDelete() {
 function deleteDebt(i) {
   debts.splice(i, 1);
   Object.keys(monthlyDebts).forEach(k => {
-    if (monthlyDebts[k][i] !== undefined) monthlyDebts[k].splice(i, 1);
+    if (monthlyDebts[k][i] != null) monthlyDebts[k].splice(i, 1);
   });
   renderDebts();
   updateSummary();
@@ -5637,7 +5717,7 @@ function saveDebtModal() {
       // schedule takes over. Keep only snapshots that have a paymentOverride
       // (manual this-month overrides the user deliberately set).
       Object.keys(monthlyDebts).forEach(function(k) {
-        if (monthlyDebts[k][i] !== undefined && monthlyDebts[k][i].paymentOverride === undefined) {
+        if (monthlyDebts[k][i] != null && monthlyDebts[k][i].paymentOverride === undefined) {
           // Remove this debt from the snapshot — schedule will project it
           delete monthlyDebts[k][i];
           // If the snapshot is now empty for all debts, remove it entirely
@@ -5664,13 +5744,13 @@ function saveDebtModal() {
       // Update any existing future snapshots
       const futureKeys = Object.keys(monthlyDebts).filter(function(k) { return k > curKey; }).sort();
       futureKeys.forEach(function(k) {
-        if (monthlyDebts[k][i] === undefined) return;
+        if (monthlyDebts[k][i] == null) return;
         const kParts = k.split('-').map(Number);
         const ky = kParts[0], km = kParts[1];
         const prevMo2 = km === 0 ? 11 : km - 1;
         const prevYr2 = km === 0 ? ky - 1 : ky;
         const prevSnap = monthlyDebts[monthKey(prevYr2, prevMo2)];
-        const prevBal = prevSnap && prevSnap[i] !== undefined ? prevSnap[i].balance : null;
+        const prevBal = prevSnap && prevSnap[i] != null ? prevSnap[i].balance : null;
         const futureBal = prevBal !== null ? applyMonthlyAmortization(prevBal, parseDebtRate(rate), payment) : monthlyDebts[k][i].balance;
         monthlyDebts[k][i] = Object.assign({}, monthlyDebts[k][i], { name, max, rate, payment, balance: Math.max(0, futureBal) });
         delete monthlyDebts[k][i].paymentOverride;
@@ -8106,19 +8186,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Pull latest data from Gist on every load (stays logged in)
   if (gistConfigured()) {
-    setSyncStatus('syncing');
-    const ok = await loadFromGist();
-    if (ok) {
-      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
-      setSyncStatus('ok', '✓ Synced');
-      setTimeout(() => setSyncStatus('idle'), 2500);
-    } else {
-      setSyncStatus('error', 'Could not sync — check connection');
+    setSyncStatus('syncing', 'Syncing\u2026');
+    try {
+      const ok = await loadFromGist();
+      if (ok) {
+        renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+        renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
+        setSyncStatus('ok', '\u2713 Synced');
+        setTimeout(() => setSyncStatus('idle'), 2500);
+      } else {
+        setSyncStatus('error', 'Sync failed \u2014 using local data');
+        setTimeout(() => setSyncStatus('idle'), 4000);
+      }
+    } catch(err) {
+      console.warn('Startup Gist sync failed:', err);
+      setSyncStatus('error', 'Sync error \u2014 using local data');
       setTimeout(() => setSyncStatus('idle'), 4000);
     }
   } else {
-    setSyncStatus('idle', '☁️ Log in');
+    setSyncStatus('idle', '\u2601\ufe0f Log in');
   }
 });
 
@@ -8982,24 +9068,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 <div class="modal-overlay" id="gist-setup-modal" onclick="if(event.target===this)closeGistSetup()" style="z-index:1100">
   <div class="modal" style="max-width:420px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">☁️ Log in to Sync</h2>
+      <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">&#x2601;&#xFE0F; Log in to Sync</h2>
       <a href="#" onclick="event.preventDefault();document.getElementById('gist-help-modal').classList.add('open')" style="font-size:0.8em;color:var(--accent);text-decoration:none">Help ?</a>
     </div>
     <div class="form-field" style="margin-bottom:14px">
       <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Access Token</label>
       <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
     </div>
-    <div class="form-field" style="margin-bottom:20px">
+    <div class="form-field" style="margin-bottom:14px">
       <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Gist ID</label>
       <input type="text" id="gist-id-input" placeholder="4c090b1618a30987132c62d6bde48c6a" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
     </div>
-    <div style="display:flex;gap:10px">
+    <div id="gist-diag-box" style="display:none;margin-bottom:14px;padding:10px 12px;background:var(--surface2);border-radius:8px;font-family:var(--font-mono);font-size:0.75em;color:var(--expense-red);word-break:break-all;line-height:1.5"></div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
       <button class="btn-primary" onclick="saveGistConfig()" style="flex:1">Connect</button>
       <button class="btn-secondary" onclick="closeGistSetup()">Cancel</button>
     </div>
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+    <button class="btn-secondary" onclick="testGistConnection()" style="width:100%;margin-bottom:16px;font-size:0.85em">&#x1F50D; Test connection</button>
+    <div style="padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
-      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','☁️ Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
+      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem('gist_token');localStorage.removeItem('gist_id');closeGistSetup();setSyncStatus('idle','\u2601\uFE0F Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
     </div>
   </div>
 </div>
