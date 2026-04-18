@@ -3900,6 +3900,8 @@ function closePayEdit(e) {
 // monthlyInvests: { "YYYY-M": [{name,value}, ...] }
 
 function monthKey(yr, mo) { return yr + '-' + mo; }
+// Numeric value for month ordering — avoids '2026-10' < '2026-3' string comparison bug
+function monthVal(yr, mo) { return yr * 12 + mo; }
 
 // ── Per-month expense field helpers (history-based) ──────────────────────────
 // expenseHistory[id] = [{yr, mo, amount, due, source, category}, ...] sorted oldest→newest.
@@ -3993,9 +3995,6 @@ function getDebtsForMonth(yr, mo) {
   const key = monthKey(yr, mo);
   const snapshot = monthlyDebts[key];
 
-  // Always iterate over all debts[] so newly added debts appear in every month.
-  // For debts that have a month snapshot entry, use it (with override logic).
-  // For debts without a snapshot entry, project via schedule or amortization.
   return debts.map(function(baseDebt, i) {
     // If debt hasn't started yet, show zero balance
     if (baseDebt.startDate) {
@@ -4006,11 +4005,27 @@ function getDebtsForMonth(yr, mo) {
       }
     }
 
-    // If a snapshot exists for this month AND this debt index, honour it
-    // Guard against null slots (JSON serialization of sparse arrays produces null)
+    // For debts with a schedule or balance override, ALWAYS use projectDebtBalance
+    // so that all months are calculated consistently from the single source of truth.
+    // Only check for a paymentOverride snapshot (this-month-only payment override).
+    const hasScheduleOrOverride = (baseDebt.startDate && baseDebt.max && baseDebt.payment) || baseDebt.balanceOverride;
+    if (hasScheduleOrOverride) {
+      // Check if there's a payment override snapshot for this specific month
+      if (snapshot && snapshot[i] != null && snapshot[i].paymentOverride !== undefined) {
+        const snap = snapshot[i];
+        const projected = projectDebtBalance(i, yr, mo);
+        const baseBal = projected !== null ? projected : snap.balance;
+        const bal = Math.max(0, baseBal - snap.paymentOverride);
+        return Object.assign({}, baseDebt, { balance: bal, paymentOverride: snap.paymentOverride });
+      }
+      const projected = projectDebtBalance(i, yr, mo);
+      if (projected === null) return baseDebt;
+      return Object.assign({}, baseDebt, { balance: projected });
+    }
+
+    // Legacy debts without schedule: use snapshot if available
     if (snapshot && snapshot[i] != null) {
       const snap = snapshot[i];
-      // If there's a payment override, derive balance from previous month
       if (snap.paymentOverride !== undefined) {
         const prevMo = mo === 0 ? 11 : mo - 1;
         const prevYr = mo === 0 ? yr - 1 : yr;
@@ -4022,7 +4037,7 @@ function getDebtsForMonth(yr, mo) {
       return snap;
     }
 
-    // No snapshot for this debt — project via schedule or amortization
+    // No snapshot — project via amortization from nearest snapshot
     const projected = projectDebtBalance(i, yr, mo);
     if (projected === null) return baseDebt;
     return Object.assign({}, baseDebt, { balance: projected });
@@ -4049,34 +4064,31 @@ function projectDebtBalance(i, targetYr, targetMo) {
     if (scheduled !== null) return Math.max(0, scheduled);
   }
 
-  // ── Case 2: balance override with startDate ─────────────────────
-  // The override gives us an exact balance at a known month (anchorYr/anchorMo).
-  // Project forward from there using amortization, OR backward using reverse amortization.
+  // ── Case 2: balance override with overrideYr/overrideMo ─────────
   if (baseDebt.balanceOverride && baseDebt.manualBalance !== null && baseDebt.overrideYr !== undefined) {
     const anchorYr = baseDebt.overrideYr;
     const anchorMo = baseDebt.overrideMo;
     const anchorBal = baseDebt.manualBalance;
-    const targetKey = monthKey(targetYr, targetMo);
-    const anchorKey = monthKey(anchorYr, anchorMo);
+    const targetVal = monthVal(targetYr, targetMo);
+    const anchorVal = monthVal(anchorYr, anchorMo);
 
-    if (targetKey === anchorKey) return anchorBal;
+    if (targetVal === anchorVal) return anchorBal;
 
-    if (targetKey > anchorKey) {
+    if (targetVal > anchorVal) {
       // Project forward from anchor
       let bal = anchorBal;
       let y = anchorYr, m = anchorMo;
-      while (monthKey(y, m) < targetKey) {
+      while (monthVal(y, m) < targetVal) {
         m++; if (m > 11) { m = 0; y++; }
         bal = applyMonthlyAmortization(bal, rate, payment, y, m);
         if (bal <= 0) return 0;
       }
       return bal;
     } else {
-      // Project backward from anchor (reverse amortization: add payment, subtract interest)
+      // Project backward from anchor (reverse amortization)
       let bal = anchorBal;
       let y = anchorYr, m = anchorMo;
-      while (monthKey(y, m) > targetKey) {
-        // Reverse: bal_prev = (bal_after + payment) / (1 + dailyRate * daysInMonth)
+      while (monthVal(y, m) > targetVal) {
         const days = new Date(y, m + 1, 0).getDate();
         const dailyRate = rate / 365;
         bal = (bal + payment) / (1 + dailyRate * days);
@@ -4084,7 +4096,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
         if (baseDebt.startDate) {
           const sdParts = baseDebt.startDate.split('-').map(Number);
           if (y < sdParts[0] || (y === sdParts[0] && m < sdParts[1] - 1)) {
-            return baseDebt.max || anchorBal; // before loan start
+            return baseDebt.max || anchorBal;
           }
         }
       }
@@ -4092,20 +4104,20 @@ function projectDebtBalance(i, targetYr, targetMo) {
     }
   }
 
-  // ── Case 2b: balance override without overrideYr (legacy — use earliest snapshot) ─
+  // ── Case 2b: balance override without overrideYr (legacy) ────────
   if (baseDebt.balanceOverride && baseDebt.manualBalance !== null) {
     const keys = Object.keys(monthlyDebts).sort();
-    const targetKey = monthKey(targetYr, targetMo);
+    const targetVal = monthVal(targetYr, targetMo);
     let anchorKey = null, anchorYr, anchorMo;
     for (const k of keys) {
       if (monthlyDebts[k][i] != null) { anchorKey = k; break; }
     }
     if (anchorKey) {
       [anchorYr, anchorMo] = anchorKey.split('-').map(Number);
-      if (targetKey < monthKey(anchorYr, anchorMo)) return null;
+      if (targetVal < monthVal(anchorYr, anchorMo)) return null;
       let bal = baseDebt.manualBalance;
       let y = anchorYr, m = anchorMo;
-      while (monthKey(y, m) < targetKey) {
+      while (monthVal(y, m) < targetVal) {
         m++; if (m > 11) { m = 0; y++; }
         bal = applyMonthlyAmortization(bal, rate, payment, y, m);
         if (bal <= 0) return 0;
@@ -4115,18 +4127,23 @@ function projectDebtBalance(i, targetYr, targetMo) {
   }
 
   // ── Case 3: snapshot walk (legacy debts without schedule data) ──
-  const keys = Object.keys(monthlyDebts).sort();
-  const targetKey = monthKey(targetYr, targetMo);
+  const keys = Object.keys(monthlyDebts).sort(function(a, b) {
+    const [ay, am] = a.split('-').map(Number);
+    const [by, bm] = b.split('-').map(Number);
+    return monthVal(ay, am) - monthVal(by, bm);
+  });
+  const targetVal3 = monthVal(targetYr, targetMo);
 
   let startKey = null, startYr, startMo;
   for (const k of keys) {
-    if (k <= targetKey && monthlyDebts[k][i] != null) {
+    const [ky, km] = k.split('-').map(Number);
+    if (monthVal(ky, km) <= targetVal3 && monthlyDebts[k][i] != null) {
       startKey = k;
-      [startYr, startMo] = k.split('-').map(Number);
+      startYr = ky; startMo = km;
     }
   }
   if (startKey === null) return null;
-  if (startKey === targetKey) {
+  if (monthVal(startYr, startMo) === targetVal3) {
     const snap = monthlyDebts[startKey][i];
     if (snap.paymentOverride !== undefined) {
       const prevMo2 = startMo === 0 ? 11 : startMo - 1;
@@ -4153,7 +4170,7 @@ function projectDebtBalance(i, targetYr, targetMo) {
   let currentAnchorRate = parseDebtRate(anchorSnap.rate || baseDebt.rate);
 
   let y = startYr, m = startMo;
-  while (monthKey(y, m) < targetKey) {
+  while (monthVal(y, m) < targetVal3) {
     m++; if (m > 11) { m = 0; y++; }
     const k = monthKey(y, m);
     if (monthlyDebts[k] && monthlyDebts[k][i] != null) {
@@ -4710,7 +4727,7 @@ function renderInvestments() {
       : '';
     return `
     <div class="invest-item">
-      <div style="flex:1;cursor:pointer" onclick="openInvestTrend(${i})" title="View trend">
+      <div style="flex:1;cursor:pointer;-webkit-tap-highlight-color:transparent" onclick="openInvestTrend(${i})" ontouchend="event.preventDefault();openInvestTrend(${i})" title="View trend">
         <div style="font-size:0.9286em;font-weight:500;margin-bottom:6px">${inv.name}</div>
         <div class="progress-track" style="width:120px">
           <div class="progress-fill green" style="width:${pct}%"></div>
@@ -5709,26 +5726,37 @@ function saveDebtModal() {
     });
 
     if (hasSchedule) {
-      // Schedule mode: wipe any stale snapshots for this debt index so the
-      // schedule takes over. Keep only snapshots that have a paymentOverride
-      // (manual this-month overrides the user deliberately set).
+      // Pure schedule mode: wipe any stale non-override snapshots so schedule takes over
       Object.keys(monthlyDebts).forEach(function(k) {
         if (monthlyDebts[k][i] != null && monthlyDebts[k][i].paymentOverride === undefined) {
-          // Remove this debt from the snapshot — schedule will project it
           delete monthlyDebts[k][i];
-          // If the snapshot is now empty for all debts, remove it entirely
           if (Object.keys(monthlyDebts[k]).filter(function(x) { return monthlyDebts[k][x] !== undefined; }).length === 0) {
             delete monthlyDebts[k];
           }
         }
       });
-      // If there's a paymentOverride for this month, write it into a snapshot
+      if (paymentOverride !== undefined) {
+        const monthData = ensureMonthDebts(calYear, calMonth);
+        monthData[i] = Object.assign({}, monthData[i], { paymentOverride });
+      }
+    } else if (balanceOverride) {
+      // Manual balance override: store anchor on debts[i], wipe all snapshots for this debt
+      // so projectDebtBalance can project forward AND backward from the anchor month.
+      Object.keys(monthlyDebts).forEach(function(k) {
+        if (monthlyDebts[k][i] != null && monthlyDebts[k][i].paymentOverride === undefined) {
+          delete monthlyDebts[k][i];
+          if (Object.keys(monthlyDebts[k]).filter(function(x) { return monthlyDebts[k][x] !== undefined; }).length === 0) {
+            delete monthlyDebts[k];
+          }
+        }
+      });
+      // If there's a this-month payment override, still write that snapshot
       if (paymentOverride !== undefined) {
         const monthData = ensureMonthDebts(calYear, calMonth);
         monthData[i] = Object.assign({}, monthData[i], { paymentOverride });
       }
     } else {
-      // Manual balance mode: write a snapshot for this month
+      // No schedule, no override: write a snapshot for this month and project forward
       const effectiveBalance = resolveBalance(calYear, calMonth, payment);
       const monthData = ensureMonthDebts(calYear, calMonth);
       monthData[i] = Object.assign({}, monthData[i], { name, max, rate, balance: effectiveBalance, payment });
