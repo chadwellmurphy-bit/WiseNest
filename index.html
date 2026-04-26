@@ -7892,6 +7892,36 @@ function renderCreditCardsPage() {
       ? `<img src="${LOGOS[card.expenseSource]}" alt="${escHtml(card.name)}" style="height:28px;object-fit:contain;border-radius:4px">`
       : `<div style="width:28px;height:28px;background:var(--surface2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.1em">💳</div>`;
 
+    // Current balance panel
+    const _curBal = card.currentBalance !== undefined ? card.currentBalance : null;
+    const _balAsOf = card.currentBalanceAsOf ? 'as of ' + fmtAsOf(card.currentBalanceAsOf) : '';
+    const currentBalancePanelHtml =
+      '<div style="margin:0 20px 16px;padding:14px 16px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+          '<div>' +
+            '<div style="font-size:0.8571em;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">' +
+              '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1"/><path d="M1 7h14"/><path d="M5 11h2"/></svg>' +
+              ' Current Balance' +
+            '</div>' +
+            '<div id="cc-bal-asof-' + card.id + '" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">' + _balAsOf + '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<span style="font-size:0.8571em;color:var(--muted);font-family:var(--font-mono)">$</span>' +
+            '<input id="cc-bal-input-' + card.id + '" type="number" min="0" placeholder="0.00"' +
+              ' value="' + (_curBal !== null ? _curBal : '') + '"' +
+              ' style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono);font-size:1em;font-weight:600;padding:5px 8px;text-align:right;outline:none;transition:border-color .15s"' +
+              ' onfocus="this.style.borderColor=\'var(--accent)\'"' +
+              ' onblur="this.style.borderColor=\'var(--border)\';setCCBalance(\'' + card.id + '\',this.value)"' +
+              ' oninput="setCCBalance(\'' + card.id + '\',this.value)">' +
+            '<button onclick="clearCCBalance(\'' + card.id + '\')"' +
+              ' style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 7px;font-size:0.75em;cursor:pointer;font-family:var(--font-mono);transition:all .15s"' +
+              ' onmouseover="this.style.borderColor=\'var(--expense-red)\';this.style.color=\'var(--expense-red)\'"' +
+              ' onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--muted)\'"' +
+              ' title="Clear">✕</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
     // Actual statement panel — pre-compute HTML so no nested template braces issue
     const _actual   = getCCActual(card.id, yr, mo);
     const _budget   = Math.max(0, cardBudget);
@@ -7945,11 +7975,13 @@ function renderCreditCardsPage() {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
+          <button class="icon-btn" onclick="event.stopPropagation();openEditCardModal('${card.id}')" title="Edit card"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg></button>
           ${!isRogers ? `<button class="icon-btn delete" onclick="event.stopPropagation();removeCard(${idx})" title="Remove card"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg></button>` : ''}
           <svg class="section-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
         </div>
       </div>
       <div class="section-body" id="${cardId}-body" style="max-height:none">
+        ${currentBalancePanelHtml}
         <!-- Meters -->
         <div class="rogers-meters" style="padding:16px 20px;border-bottom:1px solid var(--border)">
           <div class="rogers-meter">
@@ -8043,6 +8075,35 @@ function renderCreditCardsPage() {
   });
 
   container.innerHTML = html;
+}
+
+function setCCBalance(cardId, val) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  const n = parseFloat(val);
+  if (isNaN(n) || val === '' || val === null) {
+    delete card.currentBalance;
+    delete card.currentBalanceAsOf;
+  } else {
+    card.currentBalance = n;
+    card.currentBalanceAsOf = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  }
+  // Update the as-of label in place
+  const asOfEl = document.getElementById('cc-bal-asof-' + cardId);
+  if (asOfEl) {
+    asOfEl.textContent = card.currentBalanceAsOf ? 'as of ' + fmtAsOf(card.currentBalanceAsOf) : '';
+  }
+}
+
+function clearCCBalance(cardId) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  delete card.currentBalance;
+  delete card.currentBalanceAsOf;
+  const input = document.getElementById('cc-bal-input-' + cardId);
+  if (input) input.value = '';
+  const asOfEl = document.getElementById('cc-bal-asof-' + cardId);
+  if (asOfEl) asOfEl.textContent = '';
 }
 
 function setCashBack(cardId, val) {
@@ -8139,8 +8200,33 @@ function updateCardMetrics(cardId) {
   }
 }
 
-// Add / remove extra cards
+// Add / remove / edit cards
+let _editCardId = null;
+
 function openAddCardModal() {
+  _editCardId = null;
+  document.getElementById('add-card-modal-title').textContent = 'Add Credit Card';
+  document.getElementById('add-card-name').value = '';
+  document.getElementById('add-card-source').value = '';
+  document.getElementById('add-card-stmt-start').value = '15';
+  document.getElementById('add-card-stmt-end').value = '14';
+  document.getElementById('add-card-balance').value = '';
+  document.getElementById('add-card-delete-btn').style.display = 'none';
+  document.getElementById('add-card-modal').classList.add('open');
+  setTimeout(() => document.getElementById('add-card-name').focus(), 150);
+}
+
+function openEditCardModal(cardId) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  _editCardId = cardId;
+  document.getElementById('add-card-modal-title').textContent = 'Edit Card';
+  document.getElementById('add-card-name').value = card.name || '';
+  document.getElementById('add-card-source').value = card.expenseSource || '';
+  document.getElementById('add-card-stmt-start').value = card.statementDayStart || 15;
+  document.getElementById('add-card-stmt-end').value = card.statementDayEnd || 14;
+  document.getElementById('add-card-balance').value = card.currentBalance !== undefined ? card.currentBalance : '';
+  document.getElementById('add-card-delete-btn').style.display = card.id === 'rogers' ? 'none' : '';
   document.getElementById('add-card-modal').classList.add('open');
   setTimeout(() => document.getElementById('add-card-name').focus(), 150);
 }
@@ -8153,12 +8239,51 @@ function closeAddCardModal(e) {
 function saveAddCardModal() {
   const name   = document.getElementById('add-card-name').value.trim();
   const source = document.getElementById('add-card-source').value.trim().toLowerCase();
+  const stmtStart = parseInt(document.getElementById('add-card-stmt-start').value) || 15;
+  const stmtEnd   = parseInt(document.getElementById('add-card-stmt-end').value) || 14;
+  const balRaw = document.getElementById('add-card-balance').value;
+  const bal    = balRaw !== '' ? parseFloat(balRaw) : undefined;
   if (!name) { document.getElementById('add-card-name').focus(); return; }
-  const id = 'card_' + Date.now();
-  creditCards.push({ id, name, expenseSource: source || id, statementDayStart: 15, statementDayEnd: 14 });
+
+  if (_editCardId !== null) {
+    // Editing existing card
+    const card = creditCards.find(c => c.id === _editCardId);
+    if (card) {
+      card.name = name;
+      card.expenseSource = source || card.id;
+      card.statementDayStart = stmtStart;
+      card.statementDayEnd   = stmtEnd;
+      if (balRaw !== '' && !isNaN(bal)) {
+        card.currentBalance = bal;
+        card.currentBalanceAsOf = new Date().toISOString().slice(0, 10);
+      } else if (balRaw === '') {
+        delete card.currentBalance;
+        delete card.currentBalanceAsOf;
+      }
+    }
+  } else {
+    // Adding new card
+    const id = 'card_' + Date.now();
+    const newCard = { id, name, expenseSource: source || id, statementDayStart: stmtStart, statementDayEnd: stmtEnd };
+    if (balRaw !== '' && !isNaN(bal)) {
+      newCard.currentBalance = bal;
+      newCard.currentBalanceAsOf = new Date().toISOString().slice(0, 10);
+    }
+    creditCards.push(newCard);
+  }
+
   document.getElementById('add-card-modal').classList.remove('open');
-  document.getElementById('add-card-name').value = '';
-  document.getElementById('add-card-source').value = '';
+  renderCreditCardsPage();
+  updateNavBadges();
+}
+
+function deleteCardFromModal() {
+  if (!_editCardId || _editCardId === 'rogers') return;
+  const idx = creditCards.findIndex(c => c.id === _editCardId);
+  if (idx === -1) return;
+  if (!confirm('Remove this card? This cannot be undone.')) return;
+  creditCards.splice(idx, 1);
+  document.getElementById('add-card-modal').classList.remove('open');
   renderCreditCardsPage();
   updateNavBadges();
 }
@@ -9046,19 +9171,41 @@ document.addEventListener('DOMContentLoaded', async () => {
 <!-- ADD CREDIT CARD MODAL -->
 <div class="modal-overlay" id="add-card-modal" onclick="closeAddCardModal(event)">
   <div class="modal" style="max-width:400px">
-    <h2 style="font-family:var(--font-serif);font-size:1.4286em;margin-bottom:18px">Add Credit Card</h2>
+    <h2 id="add-card-modal-title" style="font-family:var(--font-serif);font-size:1.4286em;margin-bottom:18px">Add Credit Card</h2>
     <div class="form-field">
       <label>Card Name</label>
-      <input type="text" id="add-card-name" placeholder="e.g. Visa Infinite" onkeydown="if(event.key==='Enter')saveAddCardModal()">
+      <input type="text" id="add-card-name" placeholder="e.g. Visa Infinite">
     </div>
     <div class="form-field">
       <label>Expense Source Tag</label>
-      <input type="text" id="add-card-source" placeholder="e.g. visa (matches expenses tagged with this source)" style="font-family:var(--font-mono)" onkeydown="if(event.key==='Enter')saveAddCardModal()">
-      <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:6px">Expenses with a matching source tag will appear in this card's charges list.</div>
+      <input type="text" id="add-card-source" placeholder="e.g. visa" style="font-family:var(--font-mono)">
+      <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:6px">Expenses with a matching source tag appear in this card's charges list.</div>
+    </div>
+    <div class="form-field">
+      <label>Statement Period (day of month)</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1">
+          <div style="font-size:0.78em;color:var(--muted);font-family:var(--font-mono);margin-bottom:4px">Start day</div>
+          <input type="number" id="add-card-stmt-start" min="1" max="31" placeholder="15" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:1em;padding:10px 12px;box-sizing:border-box">
+        </div>
+        <div style="padding-top:20px;color:var(--muted)">→</div>
+        <div style="flex:1">
+          <div style="font-size:0.78em;color:var(--muted);font-family:var(--font-mono);margin-bottom:4px">End day</div>
+          <input type="number" id="add-card-stmt-end" min="1" max="31" placeholder="14" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:1em;padding:10px 12px;box-sizing:border-box">
+        </div>
+      </div>
+    </div>
+    <div class="form-field">
+      <label>Current Balance (CAD) <span style="color:var(--muted);font-size:0.85em">optional</span></label>
+      <input type="number" id="add-card-balance" min="0" step="0.01" placeholder="0.00" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:1em;padding:10px 12px;width:100%;box-sizing:border-box">
+      <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:6px">Shown as current balance with today's date stamped.</div>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveAddCardModal()">Add Card</button>
+      <button class="btn-primary" onclick="saveAddCardModal()">Save</button>
       <button class="btn-secondary" onclick="closeAddCardModal()">Cancel</button>
+    </div>
+    <div id="add-card-delete-btn" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <button onclick="deleteCardFromModal()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--expense-red);color:var(--expense-red);border-radius:8px;font-family:var(--font-sans);font-size:0.9286em;cursor:pointer;transition:all .15s" onmouseenter="this.style.background='rgba(255,91,122,.1)'" onmouseleave="this.style.background='transparent'">Delete Card</button>
     </div>
   </div>
 </div>
