@@ -3452,7 +3452,11 @@ function loadState() {
         bankAccounts.push(a);
       });
     }
-    if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
+    if (saved.monthlyBankAccounts) {
+      Object.keys(monthlyBankAccounts).forEach(k => delete monthlyBankAccounts[k]);
+      Object.assign(monthlyBankAccounts, saved.monthlyBankAccounts);
+    }
+    sanitizeMonthlyBankAccounts();
     if (saved.mortgageData) Object.assign(mortgageData, saved.mortgageData);
 
     // Sanitize monthlyDebts: strip null holes from old snapshots
@@ -3520,7 +3524,7 @@ async function pushToGist() {
 }
 
 async function pullFromGist() {
-  const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
+  const res = await fetch(`https://api.github.com/gists/${gistId()}?_=${Date.now()}`, {
     headers: {
       'Authorization': `Bearer ${gistToken()}`,
       'Accept': 'application/vnd.github+json',
@@ -3535,10 +3539,23 @@ async function pullFromGist() {
   const data = await res.json();
   const file = data.files && data.files['budget-data.json'];
   if (!file) throw new Error('budget-data.json not found in Gist');
-  // Use file.content directly — raw_url requires a separate CORS fetch that fails on iOS standalone
-  const content = file.content;
-  if (!content) throw new Error('Gist file is empty');
-  return JSON.parse(content);
+
+  // Use file.content if present and not truncated (avoids extra round-trip)
+  if (file.content && !file.truncated) {
+    const parsed = JSON.parse(file.content);
+    return parsed;
+  }
+
+  // Content truncated (>1MB) or missing — fetch raw_url with cache-bust for full, fresh content
+  if (!file.raw_url) throw new Error('Gist file is empty and no raw_url available');
+  const rawUrl = file.raw_url.split('?')[0] + '?_=' + Date.now();
+  const rawRes = await fetch(rawUrl, {
+    headers: { 'Authorization': `Bearer ${gistToken()}` }
+  });
+  if (!rawRes.ok) throw new Error(`raw_url fetch failed: HTTP ${rawRes.status}`);
+  const rawContent = await rawRes.text();
+  if (!rawContent) throw new Error('Gist file is empty');
+  return JSON.parse(rawContent);
 }
 
 function saveGistConfig() {
@@ -3594,7 +3611,12 @@ async function loadFromGist() {
         bankAccounts.push(a);
       });
     }
-    if (saved.monthlyBankAccounts) monthlyBankAccounts = saved.monthlyBankAccounts;
+    if (saved.monthlyBankAccounts) {
+      // Replace monthlyBankAccounts entirely from gist (authoritative source)
+      Object.keys(monthlyBankAccounts).forEach(k => delete monthlyBankAccounts[k]);
+      Object.assign(monthlyBankAccounts, saved.monthlyBankAccounts);
+    }
+    sanitizeMonthlyBankAccounts();
     if (saved.mortgageData)    Object.assign(mortgageData, saved.mortgageData);
     ensureBankIds();
 
@@ -3607,9 +3629,11 @@ async function loadFromGist() {
     });
     budget.expenses.forEach(e => { if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0; });
     budget.income.forEach(i =>   { if (incomeAmounts[i.id]  === undefined) incomeAmounts[i.id]  = i.amount || 0; });
-    // also persist locally as fallback
+    // also persist locally as fallback — use buildSavePayload() so localStorage
+    // always reflects the actual in-memory state, not the raw gist response
+    const localPayload = JSON.stringify(buildSavePayload());
     ['budget2026','budget-tracker','household-budget'].forEach(k => {
-      try { localStorage.setItem(k, JSON.stringify(saved)); } catch(e) {}
+      try { localStorage.setItem(k, localPayload); } catch(e) {}
     });
     return true;
   } catch(e) {
@@ -4869,6 +4893,16 @@ function ensureBankIds() {
 // Savings accounts store balance per-month keyed by account id.
 // Chequing accounts store balance directly on the base object.
 
+function sanitizeMonthlyBankAccounts() {
+  // Old saves stored some months as arrays (legacy format before per-account id keys).
+  // Strip any array entries and empty objects so they don't interfere with lookups.
+  Object.keys(monthlyBankAccounts).forEach(k => {
+    if (Array.isArray(monthlyBankAccounts[k]) || Object.keys(monthlyBankAccounts[k]).length === 0) {
+      delete monthlyBankAccounts[k];
+    }
+  });
+}
+
 function getSavingsBalanceForMonth(id, yr, mo) {
   const targetNum = yr * 100 + mo;
   let bestNum = -1, bestBalance = null;
@@ -5101,14 +5135,21 @@ function saveBankModal() {
     };
     bankAccounts.push(baseObj);
     if (type === 'savings') {
-      setSavingsBalanceForMonth(id, calYear, calMonth, safeBalance);
-    }
+        setSavingsBalanceForMonth(id, calYear, calMonth, safeBalance);
+      }
   }
 
   document.getElementById('bank-modal').classList.remove('open');
   renderBankAccounts();
   renderCalendar();
   updateSummary();
+
+  // Auto-persist to localStorage so savings balances survive a reload
+  // even if the user hasn't pressed the Save button yet.
+  const autoPayload = JSON.stringify(buildSavePayload());
+  ['budget2026','budget-tracker','household-budget'].forEach(k => {
+    try { localStorage.setItem(k, autoPayload); } catch(e) {}
+  });
 }
 
 function closeBankModal(e) {
