@@ -5778,7 +5778,10 @@ function debtModalDelete() {
 function deleteDebt(i) {
   debts.splice(i, 1);
   Object.keys(monthlyDebts).forEach(k => {
-    if (monthlyDebts[k][i] != null) monthlyDebts[k].splice(i, 1);
+    if (Array.isArray(monthlyDebts[k])) {
+      monthlyDebts[k].splice(i, 1);
+      if (monthlyDebts[k].every(v => v == null || v === undefined)) delete monthlyDebts[k];
+    }
   });
   renderDebts();
   updateSummary();
@@ -5901,10 +5904,9 @@ function saveDebtModal() {
         monthlyDebts[k][i] = Object.assign({}, monthlyDebts[k][i], { name, max, rate, payment, balance: rollingBal });
         delete monthlyDebts[k][i].paymentOverride;
       });
-      // Stamp paidOffAt when an extra payment zeroes the loan this month
+      // Stamp paidOffAt when an extra payment (or regular balance) zeroes the loan this month
       if (paymentOverride !== undefined) {
-        const balBefore = effectiveBalance;
-        if (Math.max(0, balBefore - paymentOverride) === 0) {
+        if (Math.max(0, effectiveBalance - paymentOverride) === 0) {
           debts[i].paidOffAt = { yr: calYear, mo: calMonth };
         } else if (debts[i].paidOffAt) {
           delete debts[i].paidOffAt;
