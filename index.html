@@ -4106,6 +4106,13 @@ function projectDebtBalance(i, targetYr, targetMo) {
   const rate = parseDebtRate(baseDebt.rate);
   const payment = baseDebt.payment || 0;
 
+  // ── Early payoff: extra payment zeroed this loan out ───────────
+  if (baseDebt.paidOffAt) {
+    if (monthVal(targetYr, targetMo) >= monthVal(baseDebt.paidOffAt.yr, baseDebt.paidOffAt.mo)) {
+      return 0;
+    }
+  }
+
   // ── Case 1: pure schedule, no override ─────────────────────────
   if (baseDebt.startDate && baseDebt.max && payment && !baseDebt.balanceOverride) {
     const scheduled = calcScheduleBalanceWithPayment(
@@ -4677,6 +4684,12 @@ function renderDebts() {
 
   body.innerHTML = headerHtml + indices.map(function(i) {
     var d = monthData[i];
+    // Hide this debt in months after it was paid off via extra payment
+    var base = debts[i];
+    if (base && base.paidOffAt &&
+        monthVal(yr, mo) > monthVal(base.paidOffAt.yr, base.paidOffAt.mo)) {
+      return '';
+    }
     var baseDebt = debts[i] || d;
     var prevEntry = prevMonthData[i];
     var prevBalance = prevEntry ? prevEntry.balance : null;
@@ -5861,6 +5874,16 @@ function saveDebtModal() {
       if (paymentOverride !== undefined) {
         const snap = ensureMonthDebts(calYear, calMonth);
         snap[i] = Object.assign({}, snap[i] || {}, { paymentOverride });
+        // Check if this extra payment zeroes the projected balance
+        const projBal = projectDebtBalance(i, calYear, calMonth);
+        const balBefore2 = projBal !== null ? projBal : 0;
+        if (Math.max(0, balBefore2 - paymentOverride) === 0) {
+          debts[i].paidOffAt = { yr: calYear, mo: calMonth };
+        } else if (debts[i].paidOffAt) {
+          delete debts[i].paidOffAt;
+        }
+      } else if (debts[i].paidOffAt) {
+        delete debts[i].paidOffAt;
       }
 
     } else {
@@ -5878,6 +5901,19 @@ function saveDebtModal() {
         monthlyDebts[k][i] = Object.assign({}, monthlyDebts[k][i], { name, max, rate, payment, balance: rollingBal });
         delete monthlyDebts[k][i].paymentOverride;
       });
+      // Stamp paidOffAt when an extra payment zeroes the loan this month
+      if (paymentOverride !== undefined) {
+        const balBefore = effectiveBalance;
+        if (Math.max(0, balBefore - paymentOverride) === 0) {
+          debts[i].paidOffAt = { yr: calYear, mo: calMonth };
+        } else if (debts[i].paidOffAt) {
+          delete debts[i].paidOffAt;
+        }
+      } else if (effectiveBalance === 0) {
+        debts[i].paidOffAt = { yr: calYear, mo: calMonth };
+      } else if (debts[i].paidOffAt) {
+        delete debts[i].paidOffAt;
+      }
     }
 
   } else {
