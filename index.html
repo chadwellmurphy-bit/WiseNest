@@ -4499,6 +4499,10 @@ function renderExpenses() {
     if (item.startYr !== undefined) {
       if (calYear < item.startYr || (calYear === item.startYr && calMonth < item.startMo)) return '';
     }
+    // Skip one-time expenses that have passed their target month
+    if (item.endYr !== undefined) {
+      if (calYear > item.endYr || (calYear === item.endYr && calMonth > item.endMo)) return '';
+    }
     const amt      = getExpenseAmountForMonth(item.id, calYear, calMonth);
     const due      = getExpenseDueForMonth(item.id, calYear, calMonth);
     const source   = getExpenseSourceForMonth(item.id, calYear, calMonth);
@@ -5661,18 +5665,14 @@ function saveExpenseModal() {
       expenseAmounts[id] = 0;
       setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, calYear, calMonth);
     } else {
-      // One-time: push with base amount 0 / no due, stamp the real values for
-      // the target month, then write a reset entry for the NEXT month so the
-      // history entry doesn't bleed forward via _historyEntryFor.
-      budget.expenses.push({ id, name, amount: 0, due: '', category, source });
-      expenseAmounts[id] = 0;
+      // One-time: stamp real values for the target month only.
+      // startYr/startMo + endYr/endMo bound it to exactly one month in renderExpenses.
       const tgtYr = window._calReturnDay ? window._calReturnDay.yr : calYear;
       const tgtMo = window._calReturnDay ? window._calReturnDay.mo : calMonth;
+      budget.expenses.push({ id, name, amount: 0, due: '', category, source,
+        startYr: tgtYr, startMo: tgtMo, endYr: tgtYr, endMo: tgtMo });
+      expenseAmounts[id] = 0;
       setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, tgtYr, tgtMo);
-      // Reset entry for the following month
-      const nextMo = tgtMo === 11 ? 0  : tgtMo + 1;
-      const nextYr = tgtMo === 11 ? tgtYr + 1 : tgtYr;
-      setExpenseFieldsFromMonth(id, { amount: 0, due: '', category, source, manual: false }, nextYr, nextMo);
     }
   }
 
@@ -6639,6 +6639,7 @@ function buildPaymentMap(yr, mo) {
   const overrides = monthOverrides[key] || {};
   budget.expenses.forEach(item => {
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+    if (item.endYr !== undefined && (yr > item.endYr || (yr === item.endYr && mo > item.endMo))) return;
     const amt = getExpenseAmountForMonth(item.id, yr, mo);
     if (amt === 0) return;
     const due      = getExpenseDueForMonth(item.id, yr, mo);
@@ -7075,6 +7076,7 @@ function drawDonut(total) {
   const cats = {};
   budget.expenses.forEach(e => {
     if (e.startYr !== undefined && (calYear < e.startYr || (calYear === e.startYr && calMonth < e.startMo))) return;
+    if (e.endYr !== undefined && (calYear > e.endYr || (calYear === e.endYr && calMonth > e.endMo))) return;
     const amt = getExpenseAmountForMonth(e.id, calYear, calMonth);
     const cat = getExpenseCategoryForMonth(e.id, calYear, calMonth) || e.category || 'Other';
     if (!cats[cat]) cats[cat] = 0;
