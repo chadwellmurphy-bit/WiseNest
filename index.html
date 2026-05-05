@@ -3949,6 +3949,16 @@ function _historyEntryFor(id, yr, mo) {
 }
 
 function getExpenseAmountForMonth(id, yr, mo) {
+  // One-time expenses: return 0 for any month outside their start–end window
+  const _item = budget.expenses.find(e => e.id === id);
+  if (_item) {
+    if (_item.startYr !== undefined) {
+      if (yr < _item.startYr || (yr === _item.startYr && mo < _item.startMo)) return 0;
+    }
+    if (_item.endYr !== undefined) {
+      if (yr > _item.endYr || (yr === _item.endYr && mo > _item.endMo)) return 0;
+    }
+  }
   const entry = _historyEntryFor(id, yr, mo);
   if (entry && entry.amount !== undefined) return entry.amount;
   return expenseAmounts[id] !== undefined
