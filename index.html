@@ -4064,6 +4064,13 @@ function getDebtsForMonth(yr, mo) {
         am++; if (am > 11) { am = 0; ay++; }
         bal = Math.max(0, applyMonthlyAmortization(bal, parseDebtRate(anchorRate), anchorPayment, ay, am));
       }
+      // Apply a payment override if one was set for this exact month
+      const targetSnap = monthlyDebts[monthKey(yr, mo)];
+      if (targetSnap && targetSnap[i] != null && targetSnap[i].paymentOverride !== undefined) {
+        const overridePay = targetSnap[i].paymentOverride;
+        bal = Math.max(0, bal - overridePay);
+        return Object.assign({}, baseDebt, { balance: bal, paymentOverride: overridePay });
+      }
       return Object.assign({}, baseDebt, { balance: bal });
     }
 
@@ -5960,14 +5967,41 @@ function closeDebtModal(e) {
 }
 
 function updateDebtPreview() {
+  const isRevolving = debtModalType === 'revolving';
+  const preview    = document.getElementById('debt-modal-preview');
+  if (!preview) return;
+
+  // For revolving debts, show a simple balance/payment summary — never "Paid off"
+  if (isRevolving) {
+    const revBal  = parseFloat(document.getElementById('debt-modal-balance-rev').value) || 0;
+    const payment = parseFloat(document.getElementById('debt-modal-payment').value) || 0;
+    const rateStr = document.getElementById('debt-modal-rate').value.trim();
+    const thisMonthRaw = document.getElementById('debt-modal-payment-thismonth').value.trim();
+    const annualRate = parseDebtRate(rateStr);
+    if (!revBal && !payment) { preview.style.display = 'none'; return; }
+    let rows = '';
+    const effectivePayment = thisMonthRaw !== '' ? (parseFloat(thisMonthRaw) || 0) : payment;
+    if (revBal > 0 && effectivePayment > 0) {
+      const interest = revBal * (annualRate / 12);
+      const nextBal  = Math.max(0, revBal + interest - effectivePayment);
+      if (annualRate > 0) rows += '<div>Interest this month: <strong style="color:var(--expense-red)">+' + fmtCents(interest) + '</strong></div>';
+      rows += '<div>Balance next month: <strong style="color:var(--debt-amber)">' + fmtCents(nextBal) + '</strong></div>';
+      if (thisMonthRaw !== '' && payment > 0 && effectivePayment !== payment) {
+        rows += '<div style="color:var(--muted)">Override: paying ' + fmtCents(effectivePayment) + ' this month (recurring: ' + fmtCents(payment) + ')</div>';
+      }
+    }
+    if (!rows) { preview.style.display = 'none'; return; }
+    preview.innerHTML = rows;
+    preview.style.display = '';
+    return;
+  }
+
   const max        = parseFloat(document.getElementById('debt-modal-max').value) || 0;
   const balanceRaw = document.getElementById('debt-modal-balance').value.trim();
   const rateStr    = document.getElementById('debt-modal-rate').value.trim();
   const payment    = parseFloat(document.getElementById('debt-modal-payment').value) || 0;
   const startDate  = document.getElementById('debt-modal-startdate').value.trim();
   const termMonths = parseInt(document.getElementById('debt-modal-term').value) || 0;
-  const preview    = document.getElementById('debt-modal-preview');
-  if (!preview) return;
   if (!max && !balanceRaw && !payment) { preview.style.display = 'none'; return; }
 
   const annualRate      = parseDebtRate(rateStr);
@@ -6017,7 +6051,8 @@ function updateDebtPreview() {
       const timeLabel = yrs > 0 ? (yrs + 'y' + (mos > 0 ? ' ' + mos + 'm' : '')) : (mos + 'm');
       rows += '<div>Paid off in <strong style="color:var(--text)">' + monthsLeft + ' months</strong> (' + timeLabel + ')</div>';
     }
-  } else if (currentBal <= 0) {
+  } else if (currentBal <= 0 && (max > 0 || balanceOverride)) {
+    // Only show "Paid off" for loans that genuinely have a zero balance
     rows += '<div><span style="color:var(--income-green)">\u2713 Paid off</span></div>';
   }
 
@@ -8750,7 +8785,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div id="debt-modal-thismonth-wrap" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:2px">
       <div class="form-field" style="margin-bottom:0">
         <label>This Month's Payment (CAD) <span style="font-weight:400;color:var(--muted);font-size:0.85em">&#8212; override</span></label>
-        <input type="number" id="debt-modal-payment-thismonth" placeholder="Leave blank to use recurring" min="0" step="0.01">
+        <input type="number" id="debt-modal-payment-thismonth" placeholder="Leave blank to use recurring" min="0" step="0.01" oninput="updateDebtPreview()">
         <div style="font-size:0.7143em;color:var(--muted);margin-top:5px">Overrides the recurring amount for <span id="debt-modal-thismonth-label"></span> only</div>
       </div>
     </div>
