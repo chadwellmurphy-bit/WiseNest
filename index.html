@@ -8570,11 +8570,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('touchstart', e => {
     if (animating) return;
-    // Works in both browser and PWA standalone mode
-    const scrollTop = window.pageYOffset
+    // Never trigger pull-to-refresh while a modal (data entry form) is open
+    if (document.querySelector('.modal-overlay.open')) return;
+    // On iOS the body never scrolls — scroll happens inside .main-content.
+    // Check that container first, then fall back to window/body for browsers.
+    const scroller = document.querySelector('.main-content');
+    const scrollTop = (scroller ? scroller.scrollTop : 0)
+      || window.pageYOffset
       || document.documentElement.scrollTop
       || document.body.scrollTop
-      || (document.querySelector('.page.active') || {}).scrollTop
       || 0;
     if (scrollTop > 2) return;
     startY   = e.touches[0].pageY;
@@ -8585,6 +8589,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('touchmove', e => {
     if (!pulling || animating) return;
+    if (document.querySelector('.modal-overlay.open')) { pulling = false; setHeight(0); return; }
     currentY = e.touches[0].pageY;
     const dy = currentY - startY;
     if (dy <= 0) { setHeight(0); return; }
