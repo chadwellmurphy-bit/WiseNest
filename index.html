@@ -5127,14 +5127,14 @@ function editBankAccount(id) {
 function toggleBankModalType() {
   const type = document.getElementById('bank-modal-type').value;
   const asofRow = document.getElementById('bank-modal-asof-row');
-  if (asofRow) asofRow.style.display = type === 'chequing' ? '' : 'none';
+  if (asofRow) asofRow.style.display = 'none';
 }
 
 function saveBankModal() {
   const name    = document.getElementById('bank-modal-name').value.trim();
   const balance = parseFloat(document.getElementById('bank-modal-balance').value);
   const type    = document.getElementById('bank-modal-type').value || 'chequing';
-  const asOf    = type === 'chequing' ? (document.getElementById('bank-modal-asof').value || '') : '';
+  const asOf    = type === 'chequing' ? new Date().toISOString().split('T')[0] : '';
   if (!name) { document.getElementById('bank-modal-name').focus(); return; }
   const safeBalance = isNaN(balance) ? 0 : balance;
   pushUndo();
