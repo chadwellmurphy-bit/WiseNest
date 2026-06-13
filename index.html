@@ -1799,6 +1799,12 @@
     font-family:var(--font-mono);
     white-space: nowrap;
   }
+  .toggle-switch { position:relative; display:inline-flex; width:34px; height:20px; flex-shrink:0; cursor:pointer; }
+  .toggle-switch input { opacity:0; width:0; height:0; position:absolute; }
+  .toggle-slider { position:absolute; inset:0; background:var(--border); border-radius:20px; transition:.2s; }
+  .toggle-slider:before { content:''; position:absolute; width:14px; height:14px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .toggle-switch input:checked + .toggle-slider { background:var(--accent); }
+  .toggle-switch input:checked + .toggle-slider:before { transform:translateX(14px); }
     width: 100%; padding: 10px;
     background: transparent; border: 1px solid var(--expense-red);
     color: var(--expense-red); border-radius: 8px; font-size: 0.9286em;
@@ -5641,6 +5647,7 @@ function addCustomSource() {
 
 function expModalDelete() {
   if (!expenseEditId) return;
+  window._pendingCCOtherCharges = false;
   document.getElementById('expense-modal').classList.remove('open');
   confirmDeleteExpense(expenseEditId);
   expenseEditId = null;
@@ -5712,7 +5719,7 @@ function saveExpenseModal() {
     if (repeat) {
       // Repeating from current month forward: base is 0/empty so past months
       // see nothing; the real values live in the history entry for this month.
-      budget.expenses.push({ id, name, amount: 0, due: '', category, source, startYr: calYear, startMo: calMonth });
+      budget.expenses.push({ id, name, amount: 0, due: '', category, source, startYr: calYear, startMo: calMonth, ...(window._pendingCCOtherCharges ? { ccOtherCharges: true } : {}) });
       expenseAmounts[id] = 0;
       setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, calYear, calMonth);
     } else {
@@ -5721,10 +5728,11 @@ function saveExpenseModal() {
       const tgtYr = window._calReturnDay ? window._calReturnDay.yr : calYear;
       const tgtMo = window._calReturnDay ? window._calReturnDay.mo : calMonth;
       budget.expenses.push({ id, name, amount: 0, due: '', category, source,
-        startYr: tgtYr, startMo: tgtMo, endYr: tgtYr, endMo: tgtMo });
+        startYr: tgtYr, startMo: tgtMo, endYr: tgtYr, endMo: tgtMo, ...(window._pendingCCOtherCharges ? { ccOtherCharges: true } : {}) });
       expenseAmounts[id] = 0;
       setExpenseFieldsFromMonth(id, { amount, due, category, source, manual }, tgtYr, tgtMo);
     }
+    window._pendingCCOtherCharges = false;
   }
 
   document.getElementById('expense-modal').classList.remove('open');
@@ -5743,6 +5751,7 @@ function closeExpenseModal(e) {
   if (e && e.target !== document.getElementById('expense-modal')) return;
   document.getElementById('expense-modal').classList.remove('open');
   window._calReturnDay = null;
+  window._pendingCCOtherCharges = false;
 }
 
 
@@ -7891,7 +7900,7 @@ function updateRogersWidget() {
 // All Rogers-source expenses for a given month
 function budget_expenses_rogers(yr, mo) {
   return budget.expenses
-    .filter(e => getExpenseSourceForMonth(e.id, yr, mo) === 'rogers')
+    .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === 'rogers')
     .map(e => ({
       id:     e.id,
       name:   e.name,
@@ -7922,8 +7931,16 @@ function setCCActual(cardId, yr, mo, val) {
   } else {
     ccActualSpend[k] = n;
   }
-  // Update just the actual-spend row without destroying input focus
+  // Sync auto-add other charges expense if enabled
+  const card = creditCards.find(c => c.id === cardId);
+  if (card && card.otherChargesAutoAdd) {
+    syncOtherChargesExpense(cardId, yr, mo);
+    renderExpenses();
+    updateSummary();
+  }
+  // Update the actual-spend row and charges list in-place (preserves input focus)
   updateActualSpendRow(cardId);
+  updateChargesList(cardId);
   updateRogersWidget();
 }
 
@@ -7934,7 +7951,7 @@ function updateActualSpendRow(cardId) {
   const actual = getCCActual(cardId, yr, mo);
 
   const cardItems = budget.expenses
-    .filter(e => getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
+    .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
     .map(e => ({ amount: getExpenseAmountForMonth(e.id, yr, mo) }))
     .filter(e => e.amount > 0);
   const isRogers = card.id === 'rogers';
@@ -7969,6 +7986,146 @@ function updateActualSpendRow(cardId) {
   if (amtCell) amtCell.innerHTML = amtHtml;
 }
 
+// Build just the inner charges list HTML for a card — used both by full render
+// and by targeted in-place updates (so we never rebuild the whole page just to
+// refresh the Other Charges row or edit button).
+function buildChargesInnerHtml(card) {
+  const yr = calYear, mo = calMonth;
+  const isRogers = card.id === 'rogers';
+  const cashBack = isRogers ? getRogersPointsRedemption(yr, mo) : 0;
+
+  const cardItems = budget.expenses
+    .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
+    .map(e => ({
+      id: e.id, name: e.name,
+      amount: getExpenseAmountForMonth(e.id, yr, mo),
+      due: getExpenseDueForMonth(e.id, yr, mo),
+    }))
+    .filter(e => e.amount > 0);
+
+  const recurringTotal = cardItems.reduce((s, x) => s + x.amount, 0);
+  const effectiveRecurring = Math.max(0, recurringTotal - cashBack);
+  const _actual = getCCActual(card.id, yr, mo);
+
+  if (cardItems.length === 0) {
+    let html = '<div style="font-size:0.8571em;color:var(--muted);padding:6px 0">No expenses linked to this card for this month.</div>';
+    html += buildOtherChargesRows(card, _actual, effectiveRecurring, cashBack);
+    return html;
+  }
+
+  let html = cardItems.map(item => {
+    const dueTxt = item.due ? 'Due ' + item.due : '';
+    const dueDay = parseDueDays(item.due)[0] || 0;
+    const period = dueDay >= (card.statementDayStart||15) ? 'next stmt' : 'this stmt';
+    const isHm   = item.id === 'rogers_hm' && isRogers;
+    const dispAmt = isHm && cashBack > 0 ? Math.max(0, item.amount - cashBack) : item.amount;
+    const cbBadge = isHm && cashBack > 0 ? ` <span style="font-size:0.75em;background:var(--accent);color:#111;border-radius:3px;padding:1px 5px;font-family:var(--font-mono)">−${fmt(cashBack)} cash back</span>` : '';
+    const amtHtml = isHm && cashBack > 0
+      ? `<span style="text-decoration:line-through;color:var(--accent);font-size:0.85em">${fmt(item.amount)}</span> <span style="color:var(--expense-red)">${fmt(dispAmt)}</span>`
+      : fmt(item.amount);
+    return `<div class="rogers-charge-row">
+      <div class="rc-name">${escHtml(item.name)}${cbBadge}</div>
+      <div class="rc-due">${escHtml(dueTxt)}</div>
+      <span class="rc-period">${period}</span>
+      <div class="rc-amt">${amtHtml}</div>
+    </div>`;
+  }).join('');
+
+  html += `<div class="rogers-charge-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-weight:600">
+    <div class="rc-name" style="color:var(--muted);font-size:0.9em">Net recurring${cashBack>0?' (after cash back)':''}</div>
+    <div></div><div></div>
+    <div class="rc-amt">${fmt(effectiveRecurring)}</div>
+  </div>`;
+
+  html += buildOtherChargesRows(card, _actual, effectiveRecurring, cashBack);
+  return html;
+}
+
+function buildOtherChargesRows(card, _actual, effectiveRecurring, cashBack) {
+  if (_actual === null) return '';
+  const otherCharges = Math.max(0, _actual - effectiveRecurring);
+  const totalBalance = effectiveRecurring + otherCharges;
+  const ocDueDay = card.otherChargesDue || 0;
+  const ocDueTxt = ocDueDay ? 'Due ' + ocDueDay + (ocDueDay===1?'st':ocDueDay===2?'nd':ocDueDay===3?'rd':'th') : '';
+  const ocPeriod = ocDueDay >= (card.statementDayStart||15) ? 'next stmt' : 'this stmt';
+  const autoAdd  = !!card.otherChargesAutoAdd;
+
+  // Due cell: when toggled on, show the day text + an inline pencil that reveals
+  // a small number input on click (all inside rc-due, no modal).
+  const dueCell = autoAdd
+    ? `<span id="oc-due-display-${card.id}" style="display:inline-flex;align-items:center;gap:4px;cursor:default">
+        <span>${escHtml(ocDueTxt) || '<span style=\"color:var(--muted);font-style:italic\">set day</span>'}</span>
+        <button id="oc-due-edit-btn-${card.id}"
+          onclick="event.stopPropagation();toggleOcDueEditor('${card.id}')"
+          title="Edit payment due day (applies to all months)"
+          style="background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;line-height:1;transition:all .15s"
+          onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+          <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
+        </button>
+        <span id="oc-due-editor-${card.id}" style="display:none;align-items:center;gap:3px">
+          <input id="oc-due-input-${card.id}" type="number" min="1" max="31" placeholder="day"
+            value="${ocDueDay || ''}"
+            style="width:36px;background:var(--surface);border:1px solid var(--accent);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:1px 4px;text-align:center;outline:none"
+            onclick="event.stopPropagation()"
+            onkeydown="if(event.key==='Enter')commitOcDue('${card.id}');if(event.key==='Escape')toggleOcDueEditor('${card.id}')">
+          <button onclick="event.stopPropagation();commitOcDue('${card.id}')"
+            style="background:var(--accent);border:none;border-radius:4px;color:#111;font-size:0.75em;padding:2px 6px;cursor:pointer;font-family:var(--font-mono)">✓</button>
+          <button onclick="event.stopPropagation();toggleOcDueEditor('${card.id}')"
+            style="background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:0.75em;padding:2px 5px;cursor:pointer;font-family:var(--font-mono)">✕</button>
+        </span>
+      </span>`
+    : `<span>${escHtml(ocDueTxt)}</span>`;
+
+  return `<div class="rogers-charge-row">
+    <div class="rc-name" style="display:flex;align-items:center;gap:6px">
+      <span>Other charges</span>
+      <label class="toggle-switch" style="margin:0" onclick="event.stopPropagation()" title="${autoAdd ? 'Synced to Money Out — click to disable' : 'Click to always add to Money Out'}">
+        <input type="checkbox" ${autoAdd ? 'checked' : ''} onchange="setOtherChargesAutoAdd('${card.id}', this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="rc-due">${dueCell}</div>
+    <span class="rc-period">${ocDueDay ? ocPeriod : ''}</span>
+    <div class="rc-amt">${fmt(otherCharges)}</div>
+  </div>
+  <div class="rogers-charge-row" style="border-top:2px solid var(--border);margin-top:6px;padding-top:8px;font-weight:700">
+    <div class="rc-name">Total statement balance</div>
+    <div></div><div></div>
+    <div class="rc-amt" style="font-size:1.05em">${fmt(totalBalance)}</div>
+  </div>`;
+}
+
+function toggleOcDueEditor(cardId) {
+  const editor = document.getElementById('oc-due-editor-' + cardId);
+  const editBtn = document.getElementById('oc-due-edit-btn-' + cardId);
+  if (!editor) return;
+  const showing = editor.style.display === 'inline-flex';
+  editor.style.display = showing ? 'none' : 'inline-flex';
+  if (editBtn) editBtn.style.display = showing ? 'inline-flex' : 'none';
+  if (!showing) {
+    const input = document.getElementById('oc-due-input-' + cardId);
+    if (input) setTimeout(() => { input.focus(); input.select(); }, 50);
+  }
+}
+
+function commitOcDue(cardId) {
+  const input = document.getElementById('oc-due-input-' + cardId);
+  if (!input) return;
+  saveOtherChargesDue(cardId, input.value);
+  // saveOtherChargesDue calls updateChargesList which rebuilds the cell, hiding the editor
+}
+
+// Refresh only the charges list inner div for a card — safe to call while the
+// actual-statement input has focus because it doesn't touch that element.
+function updateChargesList(cardId) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  const el = document.getElementById('cc-charges-inner-' + cardId);
+  if (!el) return;
+  el.innerHTML = buildChargesInnerHtml(card);
+}
+
 function renderCreditCardsPage() {
   const container = document.getElementById('creditcards-list');
   if (!container) return;
@@ -7991,7 +8148,7 @@ function renderCreditCardsPage() {
     const leftover      = totalIncome - totalExpenses;
 
     const cardItems = budget.expenses
-      .filter(e => getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
+      .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
       .map(e => ({
         id: e.id, name: e.name,
         amount: getExpenseAmountForMonth(e.id, yr, mo),
@@ -8131,33 +8288,7 @@ function renderCreditCardsPage() {
         <!-- Charges list -->
         <div class="rogers-charges-list" style="padding:16px 20px">
           <div class="rogers-charges-title">Recurring charges this statement (${card.statementDayStart||15}th → ${card.statementDayEnd||14}th)</div>
-          <div>
-            ${cardItems.length === 0
-              ? '<div style="font-size:0.8571em;color:var(--muted);padding:6px 0">No expenses linked to this card for this month.</div>'
-              : cardItems.map(item => {
-                  const dueTxt   = item.due ? 'Due ' + item.due : '';
-                  const dueDay   = parseDueDays(item.due)[0] || 0;
-                  const period   = dueDay >= (card.statementDayStart||15) ? 'next stmt' : 'this stmt';
-                  const isHm     = item.id === 'rogers_hm' && isRogers;
-                  const dispAmt  = isHm && cashBack > 0 ? Math.max(0, item.amount - cashBack) : item.amount;
-                  const cbBadge  = isHm && cashBack > 0 ? ` <span style="font-size:0.75em;background:var(--accent);color:#111;border-radius:3px;padding:1px 5px;font-family:var(--font-mono)">−${fmt(cashBack)} cash back</span>` : '';
-                  const amtHtml  = isHm && cashBack > 0
-                    ? `<span style="text-decoration:line-through;color:var(--accent);font-size:0.85em">${fmt(item.amount)}</span> <span style="color:var(--expense-red)">${fmt(dispAmt)}</span>`
-                    : fmt(item.amount);
-                  return `<div class="rogers-charge-row">
-                    <div class="rc-name">${escHtml(item.name)}${cbBadge}</div>
-                    <div class="rc-due">${escHtml(dueTxt)}</div>
-                    <span class="rc-period">${period}</span>
-                    <div class="rc-amt">${amtHtml}</div>
-                  </div>`;
-                }).join('') +
-                `<div class="rogers-charge-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-weight:600">
-                  <div class="rc-name" style="color:var(--muted);font-size:0.9em">Net recurring${cashBack>0?' (after cash back)':''}</div>
-                  <div></div><div></div>
-                  <div class="rc-amt">${fmt(effectiveRecurring)}</div>
-                </div>`
-            }
-          </div>
+          <div id="cc-charges-inner-${card.id}">${buildChargesInnerHtml(card)}</div>
         </div>
         <!-- Cash Back Redemption (Rogers only, but structured generically) -->
         <div style="margin:0 20px 16px;padding:14px 16px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
@@ -8225,6 +8356,159 @@ function clearCCBalance(cardId) {
   if (asOfEl) asOfEl.textContent = '';
 }
 
+function saveOtherChargesDue(cardId, val) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  const n = parseInt(val);
+  card.otherChargesDue = (!val || isNaN(n)) ? null : n;
+  // If auto-add is on, keep the synced expense due date current across all months
+  if (card.otherChargesAutoAdd) syncAllOtherChargesExpenses(cardId);
+  saveData();
+  updateChargesList(cardId);
+}
+
+function setOtherChargesAutoAdd(cardId, enabled) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  card.otherChargesAutoAdd = enabled;
+  if (enabled) {
+    // Create the expense object immediately so the edit button appears on the
+    // very first render after toggle-on, then backfill all months with actuals.
+    ensureOtherChargesExpense(cardId);
+    syncAllOtherChargesExpenses(cardId);
+  } else {
+    removeOtherChargesExpense(cardId);
+  }
+  saveData();
+  // Defer the DOM update so it runs after the checkbox onchange event fully
+  // settles — rebuilding innerHTML mid-event can drop the new state.
+  setTimeout(() => {
+    updateChargesList(cardId);
+    renderExpenses();
+    updateSummary();
+  }, 0);
+}
+
+// Guarantee the persistent expense object exists for this card, creating it if needed.
+function ensureOtherChargesExpense(cardId) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  if (budget.expenses.find(e => e.ccOtherCharges && e.ccOtherChargesCard === cardId)) return;
+  const id = 'exp_cc_other_' + cardId + '_' + Date.now();
+  budget.expenses.push({
+    id, name: card.name + ' — Other Charges', amount: 0, due: '', category: 'Lifestyle',
+    source: card.expenseSource || null,
+    startYr: calYear, startMo: calMonth,
+    ccOtherCharges: true, ccOtherChargesCard: cardId,
+  });
+  expenseAmounts[id] = 0;
+}
+
+// Sync every month that has an actual statement stored for this card
+function syncAllOtherChargesExpenses(cardId) {
+  const prefix = cardId + '-';
+  const months = Object.keys(ccActualSpend)
+    .filter(k => k.startsWith(prefix))
+    .map(k => {
+      const parts = k.slice(prefix.length).split('-');
+      return { yr: parseInt(parts[0]), mo: parseInt(parts[1]) };
+    });
+  // Always include the current viewed month even if no actual yet
+  if (!months.find(m => m.yr === calYear && m.mo === calMonth)) {
+    months.push({ yr: calYear, mo: calMonth });
+  }
+  months.forEach(({ yr, mo }) => syncOtherChargesExpense(cardId, yr, mo));
+}
+
+function syncOtherChargesExpense(cardId, yr, mo) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  if (yr === undefined) { yr = calYear; mo = calMonth; }
+  const actual = getCCActual(cardId, yr, mo);
+  if (actual === null) return;
+
+  const isRogers = card.id === 'rogers';
+  const cashBack = isRogers ? getRogersPointsRedemption(yr, mo) : 0;
+  const recurringTotal = budget.expenses
+    .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
+    .reduce((s, e) => s + getExpenseAmountForMonth(e.id, yr, mo), 0);
+  const effectiveRecurring = Math.max(0, recurringTotal - cashBack);
+  const otherCharges = Math.max(0, actual - effectiveRecurring);
+
+  // Find or create the single persistent expense for this card
+  let existing = budget.expenses.find(e => e.ccOtherCharges && e.ccOtherChargesCard === cardId);
+
+  const due = card.otherChargesDue ? String(card.otherChargesDue) : '';
+  const expName = card.name + ' — Other Charges';
+
+  if (!existing) {
+    // Create a persistent repeating expense (no endYr/endMo).
+    // Start from the earliest month being synced so past months show it.
+    const id = 'exp_cc_other_' + cardId + '_' + Date.now();
+    budget.expenses.push({
+      id, name: expName, amount: 0, due: '', category: 'Lifestyle',
+      source: card.expenseSource || null,
+      startYr: yr, startMo: mo,
+      ccOtherCharges: true, ccOtherChargesCard: cardId,
+    });
+    expenseAmounts[id] = 0;
+    existing = budget.expenses.find(e => e.id === id);
+  } else {
+    // Extend startYr/startMo backwards if this month is earlier
+    if (yr < existing.startYr || (yr === existing.startYr && mo < existing.startMo)) {
+      existing.startYr = yr;
+      existing.startMo = mo;
+    }
+  }
+
+  // Stamp this month's calculated amount
+  setExpenseFieldsFromMonth(existing.id, {
+    amount: otherCharges,
+    due,
+    category: getExpenseCategoryForMonth(existing.id, yr, mo) || 'Lifestyle',
+    source: card.expenseSource || null,
+    manual: false,
+  }, yr, mo);
+}
+
+function removeOtherChargesExpense(cardId) {
+  const idx = budget.expenses.findIndex(e => e.ccOtherCharges && e.ccOtherChargesCard === cardId);
+  if (idx !== -1) {
+    const id = budget.expenses[idx].id;
+    budget.expenses.splice(idx, 1);
+    delete expenseAmounts[id];
+    if (expenseHistory[id]) delete expenseHistory[id];
+  }
+}
+
+function addOtherChargesToExpenses(cardId, amount) {
+  const card = creditCards.find(c => c.id === cardId);
+  if (!card) return;
+  window._pendingCCOtherCharges = true;
+
+  // Pre-fill the expense modal like addExpense() but with card-specific defaults
+  expenseEditId = null;
+  document.getElementById('exp-modal-title').textContent = 'Add Expense';
+  document.getElementById('exp-modal-name').value = card.name + ' — Other Charges';
+  document.getElementById('exp-modal-amount').value = amount.toFixed(2);
+  const due = card.otherChargesDue ? String(card.otherChargesDue) : '';
+  document.getElementById('exp-modal-due').value = due;
+  document.getElementById('exp-modal-cat').value = 'Lifestyle';
+  setSelectedSource(card.expenseSource || null);
+  document.getElementById('exp-modal-manual').checked = false;
+  document.getElementById('exp-modal-delete-btn').style.display = 'none';
+  document.getElementById('exp-modal-remove-fwd-btn').style.display = 'none';
+  const repeatWrap = document.getElementById('exp-modal-repeat-wrap');
+  repeatWrap.style.display = '';
+  document.getElementById('exp-modal-repeat').checked = false;
+  const repeatTitle = repeatWrap.querySelector('.exp-repeat-title');
+  if (repeatTitle) repeatTitle.textContent = 'Repeat every month';
+  const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
+  if (repeatDesc) repeatDesc.textContent = 'On means this expense repeats from this month forward. Off means this month only.';
+  document.getElementById('expense-modal').classList.add('open');
+  setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
+}
+
 function setCashBack(cardId, val) {
   if (cardId === 'rogers') {
     setRogersPointsRedemption(val);
@@ -8245,7 +8529,7 @@ function updateCardMetrics(cardId) {
   const leftover      = totalIncome - totalExpenses;
 
   const cardItems = budget.expenses
-    .filter(e => getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
+    .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
     .map(e => ({
       id: e.id, name: e.name,
       amount: getExpenseAmountForMonth(e.id, yr, mo),
