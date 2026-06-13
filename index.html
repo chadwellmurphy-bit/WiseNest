@@ -5126,6 +5126,44 @@ function renderBankAccounts() {
 let bankEditId = null;   // stable account id (string) for the account being edited
 let bankModalLogoData = null;
 
+function initBankPresetImages() {
+  // Populate preset images from LOGOS once they're available
+  const cibcImg = document.getElementById('bank-preset-cibc-img');
+  const eqImg   = document.getElementById('bank-preset-eq-img');
+  if (cibcImg && LOGOS['cibc']) cibcImg.src = LOGOS['cibc'];
+  if (eqImg   && LOGOS['eq'])   eqImg.src   = LOGOS['eq'];
+}
+
+function selectBankPreset(key) {
+  // Update selected state on picker options
+  document.querySelectorAll('#bank-modal-picker .logo-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.bank === key);
+  });
+
+  if (!key) {
+    // "None" selected — clear preset logo but keep any uploaded logo
+    bankModalLogoData = null;
+    const prev = document.getElementById('bank-modal-logo-preview');
+    if (prev) prev.innerHTML = '<span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>';
+    return;
+  }
+
+  const logoSrc = LOGOS[key];
+  if (!logoSrc) return;
+  bankModalLogoData = logoSrc;
+
+  // Update the preview
+  const prev = document.getElementById('bank-modal-logo-preview');
+  if (prev) prev.innerHTML = `<img src="${logoSrc}" style="width:34px;height:34px;object-fit:contain;border-radius:6px">`;
+
+  // Auto-fill name if the field is empty
+  const nameInput = document.getElementById('bank-modal-name');
+  if (nameInput && !nameInput.value.trim()) {
+    const presetNames = { cibc: 'CIBC Chequing', eq: 'EQ Bank' };
+    if (presetNames[key]) nameInput.value = presetNames[key];
+  }
+}
+
 function previewBankLogo(input) {
   const file = input.files[0];
   if (!file) return;
@@ -5134,6 +5172,8 @@ function previewBankLogo(input) {
     bankModalLogoData = e.target.result;
     const prev = document.getElementById('bank-modal-logo-preview');
     if (prev) prev.innerHTML = `<img src="${bankModalLogoData}" style="width:34px;height:34px;object-fit:contain;border-radius:6px">`;
+    // Clear preset selection since user uploaded a custom logo
+    document.querySelectorAll('#bank-modal-picker .logo-option').forEach(el => el.classList.remove('selected'));
   };
   reader.readAsDataURL(file);
 }
@@ -5149,6 +5189,10 @@ function addBankAccount() {
   document.getElementById('bank-modal-delete-btn').style.display = 'none';
   const prev = document.getElementById('bank-modal-logo-preview');
   if (prev) prev.innerHTML = '<span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>';
+  // Reset picker selection
+  document.querySelectorAll('#bank-modal-picker .logo-option').forEach(el => el.classList.remove('selected'));
+  document.querySelector('#bank-modal-picker .none-opt')?.classList.add('selected');
+  initBankPresetImages();
   toggleBankModalType();
   document.getElementById('bank-modal').classList.add('open');
   setTimeout(() => document.getElementById('bank-modal-name').focus(), 150);
@@ -5178,6 +5222,16 @@ function editBankAccount(id) {
       ? `<img src="${logo}" style="width:34px;height:34px;object-fit:contain;border-radius:6px">`
       : '<span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>';
   }
+  // Reflect bank preset selection in picker
+  initBankPresetImages();
+  const nameL = acc.name.toLowerCase();
+  let presetKey = '';
+  if (nameL.includes('cibc')) presetKey = 'cibc';
+  else if (nameL.includes('eq')) presetKey = 'eq';
+  document.querySelectorAll('#bank-modal-picker .logo-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.bank === presetKey);
+  });
+  if (!presetKey) document.querySelector('#bank-modal-picker .none-opt')?.classList.add('selected');
   toggleBankModalType();
   document.getElementById('bank-modal').classList.add('open');
   setTimeout(() => document.getElementById('bank-modal-name').focus(), 150);
@@ -9328,7 +9382,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       <div style="font-size:0.7857em;color:var(--muted);font-family:var(--font-mono);margin-top:4px">When did you last check this balance?</div>
     </div>
     <div class="form-field">
-      <label>Bank Logo <span style="color:var(--muted);font-size:0.8em">(optional)</span></label>
+      <label>Bank</label>
+      <div class="logo-picker" id="bank-modal-picker" style="margin-top:4px">
+        <div class="logo-option none-opt" data-bank="" onclick="selectBankPreset('')">None</div>
+        <div class="logo-option" data-bank="cibc" onclick="selectBankPreset('cibc')" title="CIBC">
+          <img src="" id="bank-preset-cibc-img" style="width:32px;height:32px;object-fit:contain;border-radius:6px">
+        </div>
+        <div class="logo-option" data-bank="eq" onclick="selectBankPreset('eq')" title="EQ Bank">
+          <img src="" id="bank-preset-eq-img" style="width:32px;height:32px;object-fit:contain;border-radius:6px">
+        </div>
+      </div>
+    </div>
+    <div class="form-field">
+      <label>Bank Logo <span style="color:var(--muted);font-size:0.8em">(optional — or upload custom)</span></label>
       <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
         <div id="bank-modal-logo-preview" style="width:38px;height:38px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">
           <span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>
