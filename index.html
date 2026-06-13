@@ -5682,6 +5682,9 @@ function saveExpenseModal() {
   pushUndo();
 
   if (expenseEditId) {
+    // Always update the name on the item itself
+    const editItem = budget.expenses.find(e => e.id === expenseEditId);
+    if (editItem) editItem.name = name;
     if (repeat) {
       // Update this month and bleed forward (default behaviour)
       setExpenseFieldsFromMonth(expenseEditId, { amount, due, category, source, manual }, calYear, calMonth);
