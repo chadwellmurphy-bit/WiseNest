@@ -5529,6 +5529,7 @@ function addExpense() {
   document.getElementById('exp-modal-manual').checked = false;
   // Hide delete button in add mode
   document.getElementById('exp-modal-delete-btn').style.display = 'none';
+  document.getElementById('exp-modal-remove-fwd-btn').style.display = 'none';
   const repeatWrap = document.getElementById('exp-modal-repeat-wrap');
   repeatWrap.style.display = '';
   document.getElementById('exp-modal-repeat').checked = true;
@@ -5553,6 +5554,15 @@ function editExpense(id) {
   document.getElementById('exp-modal-manual').checked = getExpenseManualForMonth(id, calYear, calMonth);
   // Show delete button in edit mode
   document.getElementById('exp-modal-delete-btn').style.display = '';
+  // Show the "End from this month" button
+  const removeFwdBtn = document.getElementById('exp-modal-remove-fwd-btn');
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('exp-modal-remove-fwd-label').textContent = MONTH_NAMES[calMonth] + ' ' + calYear;
+  // Only show if the expense isn't already ended before or at this month
+  const _item = budget.expenses.find(e => e.id === id);
+  const alreadyEnded = _item && _item.endYr !== undefined &&
+    (_item.endYr < calYear || (_item.endYr === calYear && _item.endMo < calMonth));
+  removeFwdBtn.style.display = alreadyEnded ? 'none' : '';
   // Show the repeat toggle in edit mode with appropriate label
   const repeatWrap = document.getElementById('exp-modal-repeat-wrap');
   repeatWrap.style.display = '';
@@ -5634,6 +5644,27 @@ function expModalDelete() {
   document.getElementById('expense-modal').classList.remove('open');
   confirmDeleteExpense(expenseEditId);
   expenseEditId = null;
+}
+
+function expModalRemoveForward() {
+  if (!expenseEditId) return;
+  const item = budget.expenses.find(e => e.id === expenseEditId);
+  if (!item) return;
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const label = MONTH_NAMES[calMonth] + ' ' + calYear;
+  if (!confirm('End "' + item.name + '" from ' + label + ' onward?\n\nIt will no longer appear in this month or future months, but past months stay unchanged.')) return;
+  pushUndo();
+  // Set end to the month BEFORE the current viewed month
+  let endMo = calMonth - 1;
+  let endYr = calYear;
+  if (endMo < 0) { endMo = 11; endYr--; }
+  item.endYr = endYr;
+  item.endMo = endMo;
+  document.getElementById('expense-modal').classList.remove('open');
+  expenseEditId = null;
+  renderExpenses();
+  updateSummary();
+  reopenSection('expense-body');
 }
 
 function saveExpenseModal() {
@@ -8717,10 +8748,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         </label>
       </div>
     </div>
-<div class="modal-actions" style="justify-content:space-between">
+<div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
       <button id="exp-modal-delete-btn" class="btn-danger" style="display:none" onclick="expModalDelete()">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
         Delete
+      </button>
+      <button id="exp-modal-remove-fwd-btn" class="btn-danger" style="display:none;background:transparent;border:1px solid var(--debt-amber);color:var(--debt-amber)" onclick="expModalRemoveForward()" title="Hide this expense from this month forward, keeping past history intact">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h9M8 5l4 3-4 3"/><path d="M14 2v12" stroke-dasharray="2 2"/></svg>
+        End from <span id="exp-modal-remove-fwd-label"></span>
       </button>
       <div style="display:flex;gap:10px;margin-left:auto">
         <button class="btn-secondary" onclick="closeExpenseModal()">Cancel</button>
