@@ -4479,7 +4479,7 @@ function renderExpenses() {
 
   // Sort + filter
   let rows = budget.expenses.slice();
-  if (expSourceFilter !== null) rows = rows.filter(e => (e.source || '') === expSourceFilter);
+  if (expSourceFilter !== null) rows = rows.filter(e => (getExpenseSourceForMonth(e.id, calYear, calMonth) || '') === expSourceFilter);
   if (expSortCol) {
     rows.sort((a, b) => {
       let av, bv;
