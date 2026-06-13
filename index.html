@@ -6781,8 +6781,15 @@ function buildPaymentMap(yr, mo) {
   budget.expenses.forEach(item => {
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
     if (item.endYr !== undefined && (yr > item.endYr || (yr === item.endYr && mo > item.endMo))) return;
-    const amt = getExpenseAmountForMonth(item.id, yr, mo);
-    if (amt === 0) return;
+    let amt = getExpenseAmountForMonth(item.id, yr, mo);
+    // Apply cash back redemption to the Rogers home/mobile bill so the calendar
+    // shows the net amount actually owing, matching the credit card page.
+    let appliedCashBack = 0;
+    if (item.id === 'rogers_hm') {
+      const cashBack = getRogersPointsRedemption(yr, mo);
+      if (cashBack > 0) { appliedCashBack = Math.min(cashBack, amt); amt = Math.max(0, amt - cashBack); }
+    }
+    if (amt === 0 && appliedCashBack === 0) return;
     const due      = getExpenseDueForMonth(item.id, yr, mo);
     const source   = getExpenseSourceForMonth(item.id, yr, mo);
     const category = getExpenseCategoryForMonth(item.id, yr, mo);
@@ -6793,7 +6800,7 @@ function buildPaymentMap(yr, mo) {
     days.forEach(rawD => {
       const d = clampDay(rawD, dim);
       if (!map[d]) map[d] = [];
-      map[d].push({ id:item.id, name:item.name, amount:amt, source, category, manual, overridden: overrides[item.id]!==undefined });
+      map[d].push({ id:item.id, name:item.name, amount:amt, grossAmount: appliedCashBack > 0 ? amt + appliedCashBack : null, cashBack: appliedCashBack || null, source, category, manual, overridden: overrides[item.id]!==undefined });
     });
   });
   budget.income.forEach(item => {
@@ -6885,14 +6892,18 @@ function buildDayDetailHTML(yr, mo, day, showBack) {
       const dot = '<div style="width:8px;height:8px;border-radius:50%;background:'+(isIncome?'var(--income-green)':(categoryColors[x.category]||'#888'))+';flex-shrink:0"></div>';
       const editedBadge = (isIncome && x.overridden) ? ' <span style="font-size:0.6429em;background:var(--accent);color:#111;border-radius:3px;padding:1px 5px;font-family:var(--font-mono)">edited</span>' : '';
       const manualBadge = (!isIncome && x.manual) ? ' <span class="manual-badge">✋</span>' : '';
+      const cashBackBadge = (!isIncome && x.cashBack) ? ' <span style="font-size:0.6429em;background:var(--accent);color:#111;border-radius:3px;padding:1px 5px;font-family:var(--font-mono)">−'+fmtMoney(x.cashBack)+' cash back</span>' : '';
       const defaultNote = (isIncome && x.overridden) ? '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono)">default: '+fmtMoney(x.defaultAmt)+'</div>' : '';
+      const amtHtml = x.cashBack
+        ? '<span style="font-family:var(--font-mono);font-size:0.82em;text-decoration:line-through;color:var(--muted);margin-right:4px">'+fmtMoney(x.grossAmount)+'</span><span>'+fmtMoney(x.amount)+'</span>'
+        : fmtMoney(x.amount);
       const editBtn = isIncome
         ? '<button data-yr="'+yr+'" data-mo="'+mo+'" data-id="'+x.id+'" data-idx="'+x.payIdx+'" data-amt="'+x.amount+'" onclick="openEditPay(+this.dataset.yr,+this.dataset.mo,this.dataset.id,+this.dataset.idx,+this.dataset.amt)" title="Edit" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 7px;line-height:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a2.121 2.121 0 0 1 3 3L5 15H1v-4L11.5 2.5z"/></svg></button>'
         : '<button data-id="'+x.id+'" onclick="calEditExpense(this.dataset.id)" title="Edit" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 7px;line-height:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a2.121 2.121 0 0 1 3 3L5 15H1v-4L11.5 2.5z"/></svg></button>';
       out += '<div class="cal-day-row">' + dot + logo
-        + '<div style="flex:1"><div class="cal-day-name">' + x.name + (isIncome ? ' <span style="font-size:0.7143em;color:var(--income-green)">INCOME</span>' : '') + editedBadge + manualBadge + '</div>' + defaultNote + '</div>'
+        + '<div style="flex:1"><div class="cal-day-name">' + x.name + (isIncome ? ' <span style="font-size:0.7143em;color:var(--income-green)">INCOME</span>' : '') + editedBadge + manualBadge + cashBackBadge + '</div>' + defaultNote + '</div>'
         + editBtn
-        + '<div class="cal-day-amt" style="color:'+(isIncome||x.amount<0?'var(--income-green)':'')+'">'+fmtMoney(x.amount)+'</div>'
+        + '<div class="cal-day-amt" style="color:'+(isIncome||x.amount<0?'var(--income-green)':'')+'">'+amtHtml+'</div>'
         + '</div>';
     });
     if (expOnly.length > 0) out += '<div class="cal-day-total-strip"><div class="cal-day-total-label">Total due</div><div class="cal-day-total-val">'+fmtMoney(total)+'</div></div>';
