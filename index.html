@@ -7961,8 +7961,8 @@ function updateRogersWidget() {
   const pointsRedemption = getRogersPointsRedemption(yr, mo);
   const effectiveRecurring = Math.max(0, recurringTotal - pointsRedemption);
 
-  // Card budget = leftover + gross recurring + cash back (cash back frees up extra spending room)
-  const cardBudget = leftover + recurringTotal + pointsRedemption;
+  // Total card budget = leftover + net recurring (matches render function & tiles)
+  const cardBudget = leftover + effectiveRecurring;
 
   // Left to spend after accounting for points savings
   const available = leftover + pointsRedemption;
@@ -8006,9 +8006,8 @@ function updateRogersWidget() {
   if (actualTile) {
     const actual = getCCActual('rogers', yr, mo);
     if (actual !== null) {
-      // Compare actual vs "Left to Spend" (available = leftover + cash back).
-      // This tells you whether your total statement fit within your discretionary room.
-      const diff = actual - Math.max(0, available);
+      // Compare actual vs "Total Card Budget" (leftover + net recurring).
+      const diff = actual - Math.max(0, cardBudget);
       const over = diff > 0;
       const diffColor = over ? 'var(--expense-red)' : 'var(--income-green)';
       const diffLabel = (over ? '+' : '') + fmt(Math.abs(diff)) + (over ? ' over budget' : ' under budget');
@@ -8093,19 +8092,18 @@ function updateActualSpendRow(cardId) {
   // deflate leftover / the comparison baseline (they mirror the actual entry).
   const totalExpenses = budget.expenses.reduce((s, e) => s + (e.ccOtherCharges ? 0 : getExpenseAmount(e.id)), 0);
   const leftover = totalIncome - totalExpenses;
-  const cardBudget = leftover + recurringTotal + cashBack;
+  // Total card budget = leftover + net recurring (matches the tile & render function).
+  const cardBudget = leftover + effectiveRecurring;
 
   const sectionId = 'cc-section-' + cardId;
   const row = document.getElementById('cc-actual-row-' + cardId);
   if (!row) return;
 
-  // Compare actual vs "Left to Spend" (available = leftover + cash back = $2,285).
-  // This matches the "Left to spend" tile and tells you whether the statement
-  // fit within your discretionary room.
-  const available = Math.max(0, leftover + cashBack);
+  // Compare actual vs "Total Card Budget" — the max you could put on the card.
+  const budgetRef = Math.max(0, cardBudget);
   let diffHtml = '';
   if (actual !== null) {
-    const diff = actual - available;
+    const diff = actual - budgetRef;
     const over = diff > 0;
     const diffFmt = (over ? '+' : '') + fmt(Math.abs(diff));
     const diffColor = over ? 'var(--expense-red)' : 'var(--income-green)';
@@ -8398,13 +8396,12 @@ function renderCreditCardsPage() {
     const _tileOtherSpent = _actual !== null ? Math.max(0, _actual - effectiveRecurring) : 0;
     const _tileLeftover   = leftover  - _tileOtherSpent;
     const _tileAvailable  = available - _tileOtherSpent;
-    // Compare vs "Left to Spend" (available = leftover + cash back).
-    // This matches the Left to Spend tile so the user can see if their statement
-    // fit within their discretionary room.
-    const _available = Math.max(0, available);
+    // Compare vs "Total Card Budget" (leftover + net recurring) — the max you could put
+    // on the card. This is the tile the under/over-budget figure now references.
+    const _budgetRef = Math.max(0, cardBudget);
     let _diffHtml = '';
     if (_actual !== null) {
-      const _diff  = _actual - _available;
+      const _diff  = _actual - _budgetRef;
       const _over  = _diff > 0;
       const _dColor = _over ? 'var(--expense-red)' : 'var(--income-green)';
       const _dLabel = (_over ? '+' : '') + fmt(Math.abs(_diff)) + (_over ? ' over budget' : ' under budget');
@@ -8421,7 +8418,7 @@ function renderCreditCardsPage() {
               '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1"/><path d="M1 7h14"/><path d="M5 11h2"/><path d="M9 11h2"/></svg>' +
               ' Actual Statement Total' +
             '</div>' +
-            '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">Enter when your ' + MONTHS_SHORT[mo] + ' statement is available &middot; left to spend: ' + fmt(_available) + '</div>' +
+            '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">Enter when your ' + MONTHS_SHORT[mo] + ' statement is available &middot; total card budget: ' + fmt(_budgetRef) + '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px">' +
             '<div class="cc-actual-amt" style="display:flex;align-items:center;min-width:120px;justify-content:flex-end">' + _amtDisplay + '</div>' +
@@ -8460,7 +8457,7 @@ function renderCreditCardsPage() {
       <div class="section-body" id="${cardId}-body" style="max-height:none">
         ${currentBalancePanelHtml}
         <!-- Meters -->
-        <div class="rogers-meters" style="padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div class="rogers-meters" style="padding:16px 20px;border-bottom:1px solid var(--border);grid-template-columns:repeat(3, 1fr)">
           <div class="rogers-meter">
             <div class="rm-label">Money left over</div>
             <div class="rm-value" style="color:var(--text)">${(_tileLeftover < 0 ? '-' : '') + fmt(Math.abs(_tileLeftover))}</div>
@@ -8475,11 +8472,6 @@ function renderCreditCardsPage() {
             <div class="rm-label">Total card budget</div>
             <div class="rm-value">${fmt(Math.max(0, cardBudget))}</div>
             <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">leftover + recurring</div>
-          </div>
-          <div class="rogers-meter">
-            <div class="rm-label">Left to spend</div>
-            <div class="rm-value ${_tileAvailable < 0 ? 'red' : _tileAvailable < effectiveRecurring * 0.15 ? 'amber' : 'green'}">${(_tileAvailable<0?'-':'') + fmt(Math.abs(_tileAvailable))}</div>
-            <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">discretionary room</div>
           </div>
         </div>
         <!-- Progress bar -->
@@ -8745,8 +8737,8 @@ function updateCardMetrics(cardId) {
   const recurringTotal     = cardItems.reduce((s, x) => s + x.amount, 0);
   const cashBack           = isRogers ? getRogersPointsRedemption(yr, mo) : 0;
   const effectiveRecurring = Math.max(0, recurringTotal - cashBack);
-  // Card budget = leftover + gross recurring + cash back (cash back frees up extra spending room)
-  const cardBudget = leftover + recurringTotal + cashBack;
+  // Total card budget = leftover + net recurring (matches render function & tiles)
+  const cardBudget = leftover + effectiveRecurring;
   const available  = leftover + cashBack;
   const usedPct    = cardBudget > 0 ? Math.min(100, Math.round((effectiveRecurring / cardBudget) * 100)) : 100;
 
