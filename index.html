@@ -2257,11 +2257,11 @@
       <div class="bar-bg"><div class="bar-fill" id="debt-bar" style="width:0%"></div></div>
     </div>
     <div class="stat-card" style="border-color: rgba(62,255,163,0.3)">
-      <div class="label">Total Cash</div>
-      <div class="value" id="total-cash" style="color: var(--income-green);">$0</div>
-      <div class="sub" id="cash-change-sub">Bank account balances</div>
-      <div id="cash-asof-sub" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px"></div>
-      <div class="bar-bg"><div class="bar-fill" id="cash-bar" style="width:0%; background: var(--income-green)"></div></div>
+      <div class="label">Yearly Left Over</div>
+      <div class="value" id="yearly-leftover" style="color: var(--income-green);">$0</div>
+      <div class="sub" id="yearly-leftover-sub">Money left over this year</div>
+      <div id="yearly-leftover-months" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px"></div>
+      <div class="bar-bg"><div class="bar-fill" id="yearly-leftover-bar" style="width:0%; background: var(--income-green)"></div></div>
     </div>
     <div class="stat-card" style="border-color: rgba(91,138,255,0.3)">
       <div class="label">Mortgage Renewal</div>
@@ -4892,6 +4892,34 @@ function clearMonthInvests() {
   renderInvestments();
 }
 
+// Does a given month have any actual data entered (income actuals or CC statement)?
+function monthHasActualData(yr, mo) {
+  const incomeHit = Object.keys(incomeActuals).some(k => k.startsWith(yr + '-' + mo + '-'));
+  const ccHit = Object.keys(ccActualSpend).some(k => k.endsWith('-' + yr + '-' + mo));
+  return incomeHit || ccHit;
+}
+
+// Money left over for a specific month (income minus all expenses for that month)
+function monthLeftover(yr, mo) {
+  const income = totalActualMonthlyIncome(yr, mo);
+  const expenses = budget.expenses.reduce((s, e) => s + getExpenseAmountForMonth(e.id, yr, mo), 0);
+  return income - expenses;
+}
+
+// Sum of "money left over" from January up to and including the given month,
+// counting only months with actual data entered (a running year-to-date balance)
+function yearlyLeftover(yr, uptoMo) {
+  const last = (uptoMo === undefined) ? 11 : uptoMo;
+  let total = 0, months = 0;
+  for (let m = 0; m <= last; m++) {
+    if (monthHasActualData(yr, m)) {
+      total += monthLeftover(yr, m);
+      months++;
+    }
+  }
+  return { total, months };
+}
+
 function updateSummary() {
   const totalIncome = totalActualMonthlyIncome(calYear, calMonth);
   const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
@@ -4927,43 +4955,26 @@ function updateSummary() {
   updateNavBadges();
   updateRogersWidget();
 
-  // Total Cash stat card
-  const bankData = getBankAccountsForMonth(calYear, calMonth);
-  const totalCash = bankData.reduce((s, a) => s + a.balance, 0);
-  const cashEl = document.getElementById('total-cash');
-  if (cashEl) cashEl.textContent = fmt(totalCash);
-  const prevMoCash = calMonth === 0 ? 11 : calMonth - 1;
-  const prevYrCash = calMonth === 0 ? calYear - 1 : calYear;
-  const prevBankData = getBankAccountsForMonth(prevYrCash, prevMoCash);
-  const prevTotalCash = prevBankData.reduce((s, a) => s + a.balance, 0);
-  const cashSubEl = document.getElementById('cash-change-sub');
-  if (cashSubEl) {
-    if (prevTotalCash > 0 && prevTotalCash !== totalCash) {
-      const diff = totalCash - prevTotalCash;
-      const pct = Math.round(Math.abs(diff / prevTotalCash) * 100);
-      const arrow = diff >= 0 ? '▲' : '▼';
-      const color = diff >= 0 ? 'var(--income-green)' : 'var(--expense-red)';
-      cashSubEl.innerHTML = `vs last month: <span style="color:${color}">${arrow} ${fmt(Math.abs(diff))} (${pct}%)</span>`;
-    } else {
-      cashSubEl.textContent = 'Bank account balances';
-    }
+  // Yearly Left Over stat card — running total of monthly "money left over" from January
+  // up to the month being viewed, counting only months that have actual data entered.
+  const yl = yearlyLeftover(calYear, calMonth);
+  const ylEl = document.getElementById('yearly-leftover');
+  if (ylEl) {
+    ylEl.textContent = (yl.total < 0 ? '-' : '') + fmt(Math.abs(yl.total));
+    ylEl.style.color = yl.total < 0 ? 'var(--expense-red)' : 'var(--income-green)';
   }
-  // Show oldest "as of" date among chequing accounts on summary
-  const cashAsofEl = document.getElementById('cash-asof-sub');
-  if (cashAsofEl) {
-    const chequingAccounts = bankAccounts.filter(a => a.type !== 'savings' && a.asOf);
-    if (chequingAccounts.length > 0) {
-      const oldest = chequingAccounts.sort((a,b) => a.asOf < b.asOf ? -1 : 1)[0];
-      cashAsofEl.textContent = 'as of ' + fmtAsOf(oldest.asOf);
-    } else {
-      cashAsofEl.textContent = '';
-    }
+  const ylSub = document.getElementById('yearly-leftover-sub');
+  if (ylSub) ylSub.textContent = 'Year to date \u00b7 ' + MONTHS_SHORT[calMonth] + ' ' + calYear;
+  const ylMonths = document.getElementById('yearly-leftover-months');
+  if (ylMonths) {
+    ylMonths.textContent = yl.months === 0
+      ? 'No months with data yet'
+      : yl.months + ' month' + (yl.months === 1 ? '' : 's') + ' \u00b7 avg ' + fmt(yl.total / yl.months) + '/mo';
   }
-  const cashBarEl = document.getElementById('cash-bar');
-  if (cashBarEl) {
-    const totalDebtVal = getDebtsForMonth(calYear, calMonth).reduce((s,d)=>s+d.balance,0);
-    const maxVal = Math.max(totalCash, totalDebtVal, 1);
-    cashBarEl.style.width = Math.min(100, Math.round((totalCash / maxVal) * 100)) + '%';
+  const ylBar = document.getElementById('yearly-leftover-bar');
+  if (ylBar) {
+    ylBar.style.width = Math.round(((calMonth + 1) / 12) * 100) + '%';
+    ylBar.style.background = yl.total < 0 ? 'var(--expense-red)' : 'var(--income-green)';
   }
   updateMortgageRenewalCard();
 }
