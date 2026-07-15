@@ -2259,7 +2259,7 @@
     <div class="stat-card" style="border-color: rgba(62,255,163,0.3)">
       <div class="label">Yearly Left Over</div>
       <div class="value" id="yearly-leftover" style="color: var(--income-green);">$0</div>
-      <div class="sub" id="yearly-leftover-sub">Money left over this year</div>
+      <div class="sub" id="yearly-leftover-sub">Running year-to-date total</div>
       <div id="yearly-leftover-months" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px"></div>
       <div class="bar-bg"><div class="bar-fill" id="yearly-leftover-bar" style="width:0%; background: var(--income-green)"></div></div>
     </div>
@@ -4963,8 +4963,20 @@ function updateSummary() {
     ylEl.textContent = (yl.total < 0 ? '-' : '') + fmt(Math.abs(yl.total));
     ylEl.style.color = yl.total < 0 ? 'var(--expense-red)' : 'var(--income-green)';
   }
+  // Month-over-month change: this month's own leftover contribution (how much the running
+  // total moved vs the previous month), shown like the debt tile's change indicator.
   const ylSub = document.getElementById('yearly-leftover-sub');
-  if (ylSub) ylSub.textContent = 'Year to date \u00b7 ' + MONTHS_SHORT[calMonth] + ' ' + calYear;
+  if (ylSub) {
+    if (monthHasActualData(calYear, calMonth)) {
+      const thisMonthDelta = monthLeftover(calYear, calMonth);
+      const up = thisMonthDelta >= 0;
+      const arrow = up ? '▲' : '▼';
+      const color = up ? 'var(--income-green)' : 'var(--expense-red)';
+      ylSub.innerHTML = MONTHS[calMonth] + ': <span style="color:' + color + '">' + arrow + ' ' + fmt(Math.abs(thisMonthDelta)) + '</span>';
+    } else {
+      ylSub.textContent = MONTHS[calMonth] + ': no data yet';
+    }
+  }
   const ylMonths = document.getElementById('yearly-leftover-months');
   if (ylMonths) {
     ylMonths.textContent = yl.months === 0
