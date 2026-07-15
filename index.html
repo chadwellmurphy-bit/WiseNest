@@ -7972,17 +7972,25 @@ function updateRogersWidget() {
     ? Math.min(100, Math.round((effectiveRecurring / cardBudget) * 100))
     : 100;
 
+  // Once an actual statement is entered, reflect real spending in the tiles by subtracting
+  // the "other charges" portion (actual - effectiveRecurring; recurring is already budgeted).
+  // The stable `leftover`/`available` above are still used for the under/over-budget diff.
+  const _actualStmt = getCCActual('rogers', yr, mo);
+  const _otherSpent = _actualStmt !== null ? Math.max(0, _actualStmt - effectiveRecurring) : 0;
+  const displayLeftover  = leftover  - _otherSpent;
+  const displayAvailable = available - _otherSpent;
+
   // Update meters
   if (el('rogers-leftover')) {
-    el('rogers-leftover').textContent = (leftover < 0 ? '-' : '') + fmt(Math.abs(leftover));
-    el('rogers-leftover').className   = 'rm-value ' + (leftover < 0 ? 'red' : 'var(--text)');
+    el('rogers-leftover').textContent = (displayLeftover < 0 ? '-' : '') + fmt(Math.abs(displayLeftover));
+    el('rogers-leftover').className   = 'rm-value ' + (displayLeftover < 0 ? 'red' : 'var(--text)');
   }
   if (el('rogers-recurring'))      el('rogers-recurring').textContent     = fmt(effectiveRecurring);
   if (el('rogers-budget-display')) el('rogers-budget-display').textContent = fmt(Math.max(0, cardBudget));
   if (el('rogers-available')) {
-    el('rogers-available').textContent = (available < 0 ? '-' : '') + fmt(Math.abs(available));
+    el('rogers-available').textContent = (displayAvailable < 0 ? '-' : '') + fmt(Math.abs(displayAvailable));
     el('rogers-available').className   = 'rm-value ' +
-      (available < 0 ? 'red' : available < effectiveRecurring * 0.15 ? 'amber' : 'green');
+      (displayAvailable < 0 ? 'red' : displayAvailable < effectiveRecurring * 0.15 ? 'amber' : 'green');
   }
 
   // Progress bar
