@@ -7996,12 +7996,12 @@ function updateRogersWidget() {
   if (actualTile) {
     const actual = getCCActual('rogers', yr, mo);
     if (actual !== null) {
-      // Compare vs effectiveRecurring so the diff matches the "Other charges" breakdown,
-      // not vs cardBudget which gives a misleading over/under reading.
-      const diff = actual - effectiveRecurring;
+      // Compare actual vs "Left to Spend" (available = leftover + cash back).
+      // This tells you whether your total statement fit within your discretionary room.
+      const diff = actual - Math.max(0, available);
       const over = diff > 0;
-      const diffColor = over ? 'var(--muted)' : 'var(--income-green)';
-      const diffLabel = (over ? '▲ ' : '▼ ') + fmt(Math.abs(diff)) + (over ? ' other' : ' under');
+      const diffColor = over ? 'var(--expense-red)' : 'var(--income-green)';
+      const diffLabel = (over ? '+' : '') + fmt(Math.abs(diff)) + (over ? ' over budget' : ' under budget');
       actualTile.innerHTML = `
         <div class="rm-label">Actual statement</div>
         <div class="rm-value" style="color:var(--text)">${fmt(actual)}</div>
@@ -8087,20 +8087,18 @@ function updateActualSpendRow(cardId) {
   const row = document.getElementById('cc-actual-row-' + cardId);
   if (!row) return;
 
-  // Diff vs effectiveRecurring: shows how much the statement exceeded planned recurring charges.
-  // This matches the "Other charges" row shown above and avoids comparing against cardBudget
-  // (leftover + recurring), which causes a false "over budget" when discretionary spending is normal.
+  // Compare actual vs "Left to Spend" (available = leftover + cash back = $2,285).
+  // This matches the "Left to spend" tile and tells you whether the statement
+  // fit within your discretionary room.
+  const available = Math.max(0, leftover + cashBack);
   let diffHtml = '';
   if (actual !== null) {
-    const diff = actual - effectiveRecurring;
-    // Only show a label when actual differs meaningfully from pure recurring
-    if (Math.abs(diff) >= 0.005) {
-      const over = diff > 0;
-      const diffFmt = (over ? '+' : '') + fmt(Math.abs(diff));
-      const diffColor = over ? 'var(--muted)' : 'var(--income-green)';
-      const label = over ? 'above recurring' : 'below recurring';
-      diffHtml = `<span style="font-size:0.78em;font-family:var(--font-mono);color:${diffColor};margin-left:10px">${diffFmt} ${label}</span>`;
-    }
+    const diff = actual - available;
+    const over = diff > 0;
+    const diffFmt = (over ? '+' : '') + fmt(Math.abs(diff));
+    const diffColor = over ? 'var(--expense-red)' : 'var(--income-green)';
+    const label = over ? 'over budget' : 'under budget';
+    diffHtml = `<span style="font-size:0.78em;font-family:var(--font-mono);color:${diffColor};margin-left:10px">${diffFmt} ${label}</span>`;
   }
 
   const amtHtml = actual !== null
@@ -8379,18 +8377,17 @@ function renderCreditCardsPage() {
 
     // Actual statement panel — pre-compute HTML so no nested template braces issue
     const _actual   = getCCActual(card.id, yr, mo);
-    // Show how actual compares to effectiveRecurring (planned card spend net of cash back).
-    // This matches the "Other charges" row — the diff simply tells you how much beyond recurring
-    // you actually spent, without misleadingly framing it as "over budget."
+    // Compare vs "Left to Spend" (available = leftover + cash back).
+    // This matches the Left to Spend tile so the user can see if their statement
+    // fit within their discretionary room.
+    const _available = Math.max(0, available);
     let _diffHtml = '';
     if (_actual !== null) {
-      const _diff  = _actual - effectiveRecurring;
-      if (Math.abs(_diff) >= 0.005) {
-        const _over  = _diff > 0;
-        const _dColor = _over ? 'var(--muted)' : 'var(--income-green)';
-        const _dLabel = (_over ? '+' : '') + fmt(Math.abs(_diff)) + (_over ? ' above recurring' : ' below recurring');
-        _diffHtml = '<span style="font-size:0.78em;font-family:var(--font-mono);color:' + _dColor + ';margin-left:10px">' + _dLabel + '</span>';
-      }
+      const _diff  = _actual - _available;
+      const _over  = _diff > 0;
+      const _dColor = _over ? 'var(--expense-red)' : 'var(--income-green)';
+      const _dLabel = (_over ? '+' : '') + fmt(Math.abs(_diff)) + (_over ? ' over budget' : ' under budget');
+      _diffHtml = '<span style="font-size:0.78em;font-family:var(--font-mono);color:' + _dColor + ';margin-left:10px">' + _dLabel + '</span>';
     }
     const _amtDisplay = _actual !== null
       ? '<span style="font-family:var(--font-serif);font-size:1.25em;letter-spacing:-.02em;color:var(--text)">' + fmt(_actual) + '</span>' + _diffHtml
@@ -8403,7 +8400,7 @@ function renderCreditCardsPage() {
               '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1"/><path d="M1 7h14"/><path d="M5 11h2"/><path d="M9 11h2"/></svg>' +
               ' Actual Statement Total' +
             '</div>' +
-            '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">Enter when your ' + MONTHS_SHORT[mo] + ' statement is available &middot; recurring: ' + fmt(effectiveRecurring) + '</div>' +
+            '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">Enter when your ' + MONTHS_SHORT[mo] + ' statement is available &middot; left to spend: ' + fmt(_available) + '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px">' +
             '<div class="cc-actual-amt" style="display:flex;align-items:center;min-width:120px;justify-content:flex-end">' + _amtDisplay + '</div>' +
