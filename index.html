@@ -8391,6 +8391,12 @@ function renderCreditCardsPage() {
 
     // Actual statement panel — pre-compute HTML so no nested template braces issue
     const _actual   = getCCActual(card.id, yr, mo);
+    // Once a statement is entered, the tiles reflect real spending by subtracting the
+    // "other charges" portion (actual - effectiveRecurring). The stable leftover/available
+    // above stay for the under/over-budget diff so it doesn't collapse when typing.
+    const _tileOtherSpent = _actual !== null ? Math.max(0, _actual - effectiveRecurring) : 0;
+    const _tileLeftover   = leftover  - _tileOtherSpent;
+    const _tileAvailable  = available - _tileOtherSpent;
     // Compare vs "Left to Spend" (available = leftover + cash back).
     // This matches the Left to Spend tile so the user can see if their statement
     // fit within their discretionary room.
@@ -8456,7 +8462,7 @@ function renderCreditCardsPage() {
         <div class="rogers-meters" style="padding:16px 20px;border-bottom:1px solid var(--border)">
           <div class="rogers-meter">
             <div class="rm-label">Money left over</div>
-            <div class="rm-value" style="color:var(--text)">${(leftover < 0 ? '-' : '') + fmt(Math.abs(leftover))}</div>
+            <div class="rm-value" style="color:var(--text)">${(_tileLeftover < 0 ? '-' : '') + fmt(Math.abs(_tileLeftover))}</div>
             <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">after all expenses</div>
           </div>
           <div class="rogers-meter">
@@ -8471,7 +8477,7 @@ function renderCreditCardsPage() {
           </div>
           <div class="rogers-meter">
             <div class="rm-label">Left to spend</div>
-            <div class="rm-value ${available < 0 ? 'red' : available < effectiveRecurring * 0.15 ? 'amber' : 'green'}">${(available<0?'-':'') + fmt(Math.abs(available))}</div>
+            <div class="rm-value ${_tileAvailable < 0 ? 'red' : _tileAvailable < effectiveRecurring * 0.15 ? 'amber' : 'green'}">${(_tileAvailable<0?'-':'') + fmt(Math.abs(_tileAvailable))}</div>
             <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">discretionary room</div>
           </div>
         </div>
