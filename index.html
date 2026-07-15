@@ -8350,8 +8350,9 @@ function renderCreditCardsPage() {
     const recurringTotal = cardItems.reduce((s, x) => s + x.amount, 0);
     const cashBack = isRogers ? getRogersPointsRedemption(yr, mo) : 0;
     const effectiveRecurring = Math.max(0, recurringTotal - cashBack);
-    // Card budget = leftover + gross recurring + cash back (cash back frees up extra spending room)
-    const cardBudget = leftover + recurringTotal + cashBack;
+    // Card budget = leftover + net recurring (what's already on the card, after cash back).
+    // This is the max you could put on the card: your free cash plus the recurring already charged.
+    const cardBudget = leftover + effectiveRecurring;
     const available  = leftover + cashBack;
     const usedPct = cardBudget > 0 ? Math.min(100, Math.round((effectiveRecurring / cardBudget) * 100)) : 100;
 
