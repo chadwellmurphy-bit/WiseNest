@@ -7947,8 +7947,10 @@ function updateRogersWidget() {
   if (el('rogers-period-label')) el('rogers-period-label').textContent = 'Statement: ' + periodLabel;
 
   // Income & expenses
+  // Exclude auto-generated "other charges" expenses: they mirror the actual statement entry,
+  // so counting them here would deflate leftover the moment a statement is entered (circular).
   const totalIncome   = totalActualMonthlyIncome(yr, mo);
-  const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
+  const totalExpenses = budget.expenses.reduce((s, e) => s + (e.ccOtherCharges ? 0 : getExpenseAmount(e.id)), 0);
   const leftover      = totalIncome - totalExpenses;
 
   // Rogers recurring (already inside totalExpenses)
@@ -8079,7 +8081,9 @@ function updateActualSpendRow(cardId) {
   const recurringTotal = cardItems.reduce((s, x) => s + x.amount, 0);
   const effectiveRecurring = Math.max(0, recurringTotal - cashBack);
   const totalIncome = totalActualMonthlyIncome(yr, mo);
-  const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
+  // Exclude auto-generated "other charges" expenses so entering a statement doesn't
+  // deflate leftover / the comparison baseline (they mirror the actual entry).
+  const totalExpenses = budget.expenses.reduce((s, e) => s + (e.ccOtherCharges ? 0 : getExpenseAmount(e.id)), 0);
   const leftover = totalIncome - totalExpenses;
   const cardBudget = leftover + recurringTotal + cashBack;
 
@@ -8321,7 +8325,9 @@ function renderCreditCardsPage() {
                         MONTHS_SHORT[pEnd.getMonth()] + ' ' + (card.statementDayEnd||14) + ', ' + pEnd.getFullYear();
 
     const totalIncome   = totalActualMonthlyIncome(yr, mo);
-    const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
+    // Exclude auto-generated "other charges" expenses so entering a statement doesn't
+    // deflate leftover / the comparison baseline (they mirror the actual entry).
+    const totalExpenses = budget.expenses.reduce((s, e) => s + (e.ccOtherCharges ? 0 : getExpenseAmount(e.id)), 0);
     const leftover      = totalIncome - totalExpenses;
 
     const cardItems = budget.expenses
@@ -8707,7 +8713,9 @@ function updateCardMetrics(cardId) {
   const yr = calYear, mo = calMonth;
   const isRogers = card.id === 'rogers';
   const totalIncome   = totalActualMonthlyIncome(yr, mo);
-  const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
+  // Exclude auto-generated "other charges" expenses so entering a statement doesn't
+  // deflate leftover / the comparison baseline (they mirror the actual entry).
+  const totalExpenses = budget.expenses.reduce((s, e) => s + (e.ccOtherCharges ? 0 : getExpenseAmount(e.id)), 0);
   const leftover      = totalIncome - totalExpenses;
 
   const cardItems = budget.expenses
