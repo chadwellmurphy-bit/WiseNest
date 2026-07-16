@@ -3972,7 +3972,7 @@ function openEditPay(yr, mo, id, idx, currentAmount) {
   if (!item) return;
   const days = getIncomeDaysInMonth(item, yr, mo);
   const day = days[idx];
-  const existing = parseFloat(currentAmount) || getIncomeAmount(id);
+  const existing = parseFloat(currentAmount) || getIncomeAmountForMonth(id, yr, mo);
 
   // Populate modal
   document.getElementById('pay-edit-yr').value   = yr;
@@ -3982,7 +3982,7 @@ function openEditPay(yr, mo, id, idx, currentAmount) {
 
   const label = item.name + ' — ' + MONTHS[mo] + ' ' + yr + (days.length > 1 ? ' (pay ' + (idx+1) + ' of ' + days.length + ')' : '');
   document.getElementById('pay-edit-label').textContent = label;
-  document.getElementById('pay-edit-default').textContent = fmtMoney(getIncomeAmount(id));
+  document.getElementById('pay-edit-default').textContent = fmtMoney(getIncomeAmountForMonth(id, yr, mo));
   document.getElementById('pay-edit-amount').value = existing;
   document.getElementById('pay-edit-day').textContent = day ? (MONTHS[mo] + ' ' + day + getDaySuffix(day)) : '';
 
@@ -4484,13 +4484,14 @@ function renderIncome() {
     days.forEach((day, idx) => {
       hasActualData = true;
       const actual = getActualPay(yr, mo, item.id, idx);
-      const amt = (actual !== null) ? actual : getIncomeAmount(item.id);
+      const monthDefault = getIncomeAmountForMonth(item.id, yr, mo);
+      const amt = (actual !== null) ? actual : monthDefault;
       const isEdited = actual !== null;
       const editedTag = isEdited
         ? '<span style="font-size:0.6429em;background:var(--accent);color:#111;border-radius:3px;padding:1px 4px;margin-left:4px">edited</span>'
         : '';
       const defaultNote = isEdited
-        ? '<span style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-left:6px">default: '+fmt(getIncomeAmount(item.id))+'</span>'
+        ? '<span style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-left:6px">default: '+fmt(monthDefault)+'</span>'
         : '';
       actualRows += `
       <div class="line-item" style="grid-template-columns:1fr auto auto">
@@ -4521,7 +4522,10 @@ function renderIncome() {
 
   // Actual total
   const actualTotal = totalActualMonthlyIncome(yr, mo);
-  const defaultTotal = budget.income.reduce((s,i) => s + monthlyIncome(i), 0);
+  const defaultTotal = budget.income.reduce((s,i) => {
+    const perY = FREQ_PER_YEAR[i.freq] || 12;
+    return s + (getIncomeAmountForMonth(i.id, yr, mo) * perY) / 12;
+  }, 0);
   const diff = actualTotal - defaultTotal;
   const diffStr = (diff >= 0 ? '+' : '') + fmt(Math.abs(diff));
   const diffColor = diff >= 0 ? 'var(--income-green)' : 'var(--expense-red)';
