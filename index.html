@@ -8453,6 +8453,9 @@ function renderCreditCardsPage() {
     } else {
       _stmtChangeHtml = '<span style="color:var(--muted)">total statement balance</span>';
     }
+    // Budget balance: how much of the card budget is left after this month's statement.
+    // Positive = under budget (green +), negative = over budget (red -).
+    const _budgetBalance = Math.max(0, cardBudget) - _stmtBalance;
     // Compare vs "Total Card Budget" (leftover + net recurring) — the max you could put
     // on the card. This is the tile the under/over-budget figure now references.
     const _budgetRef = Math.max(0, cardBudget);
@@ -8516,9 +8519,9 @@ function renderCreditCardsPage() {
         <!-- Meters -->
         <div class="rogers-meters" style="padding:16px 20px;border-bottom:1px solid var(--border);grid-template-columns:repeat(3, 1fr)">
           <div class="rogers-meter">
-            <div class="rm-label">Money left over</div>
-            <div class="rm-value" style="color:var(--text)">${(_tileLeftover < 0 ? '-' : '') + fmt(Math.abs(_tileLeftover))}</div>
-            <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">after all expenses</div>
+            <div class="rm-label">Total card budget</div>
+            <div class="rm-value">${fmt(Math.max(0, cardBudget))}</div>
+            <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">leftover + recurring</div>
           </div>
           <div class="rogers-meter">
             <div class="rm-label">Monthly balance</div>
@@ -8526,9 +8529,9 @@ function renderCreditCardsPage() {
             <div style="font-size:0.7em;font-family:var(--font-mono);margin-top:3px">${_stmtChangeHtml}</div>
           </div>
           <div class="rogers-meter">
-            <div class="rm-label">Total card budget</div>
-            <div class="rm-value">${fmt(Math.max(0, cardBudget))}</div>
-            <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">leftover + recurring</div>
+            <div class="rm-label">Budget balance</div>
+            <div class="rm-value" style="color:${_budgetBalance >= 0 ? 'var(--income-green)' : 'var(--expense-red)'}">${(_budgetBalance >= 0 ? '+' : '-') + fmt(Math.abs(_budgetBalance))}</div>
+            <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">${_budgetBalance >= 0 ? 'under budget' : 'over budget'}</div>
           </div>
         </div>
         <!-- Progress bar -->
