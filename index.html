@@ -8336,6 +8336,23 @@ function updateChargesList(cardId) {
   el.innerHTML = buildChargesInnerHtml(card);
 }
 
+// Total statement balance for a card in a given month.
+// If an actual statement is entered, that's the balance; otherwise it's the projected
+// net recurring (after cash back) for that month.
+function cardStatementBalance(card, yr, mo) {
+  const isRogers = card.id === 'rogers';
+  const cardItems = budget.expenses
+    .filter(e => !e.ccOtherCharges && getExpenseSourceForMonth(e.id, yr, mo) === card.expenseSource)
+    .map(e => ({ amount: getExpenseAmountForMonth(e.id, yr, mo) }))
+    .filter(e => e.amount > 0);
+  const recurringTotal = cardItems.reduce((s, x) => s + x.amount, 0);
+  const cashBack = isRogers ? getRogersPointsRedemption(yr, mo) : 0;
+  const effectiveRecurring = Math.max(0, recurringTotal - cashBack);
+  const actual = getCCActual(card.id, yr, mo);
+  if (actual !== null) return actual;
+  return effectiveRecurring;
+}
+
 function renderCreditCardsPage() {
   const container = document.getElementById('creditcards-list');
   if (!container) return;
@@ -8419,6 +8436,23 @@ function renderCreditCardsPage() {
     const _tileOtherSpent = _actual !== null ? Math.max(0, _actual - effectiveRecurring) : 0;
     const _tileLeftover   = leftover  - _tileOtherSpent;
     const _tileAvailable  = available - _tileOtherSpent;
+    // Monthly Balance tile: this month's total statement balance and its change vs last month.
+    const _stmtBalance = cardStatementBalance(card, yr, mo);
+    const _prevMo = mo === 0 ? 11 : mo - 1;
+    const _prevYr = mo === 0 ? yr - 1 : yr;
+    const _prevStmtBalance = cardStatementBalance(card, _prevYr, _prevMo);
+    let _stmtChangeHtml;
+    if (_prevStmtBalance > 0) {
+      const _sd = _stmtBalance - _prevStmtBalance;
+      const _sUp = _sd >= 0;
+      // For a bill, a lower balance is good (green); higher is bad (red).
+      const _sColor = _sUp ? 'var(--expense-red)' : 'var(--income-green)';
+      const _sArrow = _sUp ? '▲' : '▼';
+      const _sPct = Math.round(Math.abs(_sd / _prevStmtBalance) * 100);
+      _stmtChangeHtml = 'vs last month: <span style="color:' + _sColor + '">' + _sArrow + ' ' + fmt(Math.abs(_sd)) + ' (' + _sPct + '%)</span>';
+    } else {
+      _stmtChangeHtml = '<span style="color:var(--muted)">total statement balance</span>';
+    }
     // Compare vs "Total Card Budget" (leftover + net recurring) — the max you could put
     // on the card. This is the tile the under/over-budget figure now references.
     const _budgetRef = Math.max(0, cardBudget);
@@ -8487,9 +8521,9 @@ function renderCreditCardsPage() {
             <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">after all expenses</div>
           </div>
           <div class="rogers-meter">
-            <div class="rm-label">Net on card</div>
-            <div class="rm-value red">${fmt(effectiveRecurring)}</div>
-            <div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">recurring${cashBack>0?' (after cash back)':''}</div>
+            <div class="rm-label">Monthly balance</div>
+            <div class="rm-value" style="color:var(--text)">${fmt(_stmtBalance)}</div>
+            <div style="font-size:0.7em;font-family:var(--font-mono);margin-top:3px">${_stmtChangeHtml}</div>
           </div>
           <div class="rogers-meter">
             <div class="rm-label">Total card budget</div>
