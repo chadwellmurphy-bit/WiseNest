@@ -3408,6 +3408,8 @@ let debtSortMode = 'balance'; // 'balance' | 'rate' | 'months'
 // AMOUNTS_START
 let expenseAmounts = {};
 let incomeAmounts = {};
+// Effective-dated amount changes per income item: { id: [{yr, mo, amount}, ...] }
+let incomeAmountSchedule = {};
 // AMOUNTS_END
 
 // MONTHLY_EXPENSES_START
@@ -3492,6 +3494,7 @@ function loadState() {
     if (saved.expenses)        expenseAmounts = saved.expenses;
     if (saved.income)          incomeAmounts  = saved.income;
     if (saved.incomeItems)     budget.income    = saved.incomeItems;
+    if (saved.incomeAmountSchedule) incomeAmountSchedule = saved.incomeAmountSchedule;
     if (saved.expenseItems)    budget.expenses  = saved.expenseItems;
     if (saved.categoryColors)  Object.assign(categoryColors, saved.categoryColors);
     if (saved.debtsData)       { debts.length = 0; debts.push(...saved.debtsData); }
@@ -3544,6 +3547,7 @@ function buildSavePayload() {
   return {
     expenses: expenseAmounts,
     income: incomeAmounts,
+    incomeAmountSchedule,
     incomeItems: budget.income,
     expenseItems: budget.expenses,
     categoryColors,
@@ -3650,6 +3654,7 @@ async function loadFromGist() {
     if (!saved || !Object.keys(saved).length) return false;
     if (saved.expenses)        expenseAmounts = saved.expenses;
     if (saved.income)          incomeAmounts  = saved.income;
+    if (saved.incomeAmountSchedule) incomeAmountSchedule = saved.incomeAmountSchedule;
     if (saved.incomeItems)     budget.income    = saved.incomeItems;
     if (saved.expenseItems)    budget.expenses  = saved.expenseItems;
     if (saved.categoryColors)  Object.assign(categoryColors, saved.categoryColors);
@@ -3853,6 +3858,40 @@ function getIncomeAmount(id) {
   return incomeAmounts[id] !== undefined ? incomeAmounts[id] : budget.income.find(i => i.id === id)?.amount || 0;
 }
 
+// Effective-dated amount changes: incomeAmountSchedule[id] = [{ yr, mo, amount }, ...]
+// Returns the amount in effect for a specific month, falling back to the flat default.
+// This lets a rate change apply from a chosen month forward without altering past months.
+function getIncomeAmountForMonth(id, yr, mo) {
+  const sched = incomeAmountSchedule[id];
+  if (sched && sched.length) {
+    // Find the most recent change effective on or before (yr, mo)
+    let best = null;
+    for (const c of sched) {
+      const onOrBefore = (c.yr < yr) || (c.yr === yr && c.mo <= mo);
+      if (onOrBefore && (best === null || c.yr > best.yr || (c.yr === best.yr && c.mo > best.mo))) {
+        best = c;
+      }
+    }
+    if (best) return best.amount;
+    // If all scheduled changes are in the future, use the flat default for earlier months
+  }
+  return getIncomeAmount(id);
+}
+
+// Record an amount change effective from (yr, mo) forward. Replaces any existing
+// change for the same effective month.
+function setIncomeAmountFrom(id, yr, mo, amount) {
+  if (!incomeAmountSchedule[id]) incomeAmountSchedule[id] = [];
+  const sched = incomeAmountSchedule[id];
+  const existing = sched.find(c => c.yr === yr && c.mo === mo);
+  if (existing) {
+    existing.amount = parseFloat(amount) || 0;
+  } else {
+    sched.push({ yr, mo, amount: parseFloat(amount) || 0 });
+  }
+  sched.sort((a, b) => a.yr - b.yr || a.mo - b.mo);
+}
+
 function fmt(n) {
   return '$' + Math.abs(n).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
@@ -3914,9 +3953,10 @@ function monthlyActualIncomeForMonth(item, yr, mo) {
   const days = getIncomeDaysInMonth(item, yr, mo);
   if (days.length === 0) return item.oneTime ? 0 : monthlyIncome(item); // fallback only for repeating
   let total = 0;
+  const monthRate = getIncomeAmountForMonth(item.id, yr, mo);
   days.forEach((d, idx) => {
     const actual = getActualPay(yr, mo, item.id, idx);
-    total += (actual !== null) ? actual : getIncomeAmount(item.id);
+    total += (actual !== null) ? actual : monthRate;
   });
   return total;
 }
@@ -4405,8 +4445,9 @@ function renderIncome() {
     }
     // Repeating items: hide in months before they were created
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return '';
-    const perPay = getIncomeAmount(item.id);
-    const monthly = monthlyIncome(item);
+    const perPay = getIncomeAmountForMonth(item.id, yr, mo);
+    const perY = FREQ_PER_YEAR[item.freq] || 12;
+    const monthly = (perPay * perY) / 12;
     const freq = FREQ_LABELS[item.freq] || 'Monthly';
     return `
     <div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">
@@ -4991,10 +5032,55 @@ function updateSummary() {
   updateMortgageRenewalCard();
 }
 
+let _pendingIncomeEdit = null;
+
 function updateIncome(id, val) {
+  const newAmount = parseFloat(val) || 0;
+  const oldAmount = getIncomeAmountForMonth(id, calYear, calMonth);
+  // No change, or no meaningful prior value — just set the default silently.
+  if (newAmount === oldAmount) return;
+  _pendingIncomeEdit = { id, amount: newAmount, yr: calYear, mo: calMonth };
+  const item = budget.income.find(i => i.id === id);
+  const nameEl = document.getElementById('income-scope-name');
+  const fwdEl  = document.getElementById('income-scope-forward-label');
+  if (nameEl) nameEl.textContent = (item ? item.name : 'this income') + ' → ' + fmt(newAmount);
+  if (fwdEl)  fwdEl.textContent  = 'From ' + MONTHS[calMonth] + ' ' + calYear + ' forward';
+  const overlay = document.getElementById('income-scope-overlay');
+  if (overlay) overlay.classList.add('open');
+}
+
+// Apply the pending income edit from the current month forward (effective-dated)
+function applyIncomeEditForward() {
+  if (!_pendingIncomeEdit) return;
   pushUndo();
-  incomeAmounts[id] = parseFloat(val) || 0;
+  const { id, amount, yr, mo } = _pendingIncomeEdit;
+  setIncomeAmountFrom(id, yr, mo, amount);
+  _pendingIncomeEdit = null;
+  closeIncomeScopeModal();
   updateSummary();
+  renderIncome();
+  renderCalendar();
+}
+
+// Apply the pending income edit to every month (changes the flat default and clears schedule)
+function applyIncomeEditAll() {
+  if (!_pendingIncomeEdit) return;
+  pushUndo();
+  const { id, amount } = _pendingIncomeEdit;
+  incomeAmounts[id] = amount;
+  delete incomeAmountSchedule[id]; // wipe effective-dated changes; the new default covers all months
+  _pendingIncomeEdit = null;
+  closeIncomeScopeModal();
+  updateSummary();
+  renderIncome();
+  renderCalendar();
+}
+
+function closeIncomeScopeModal() {
+  const overlay = document.getElementById('income-scope-overlay');
+  if (overlay) overlay.classList.remove('open');
+  // Re-render income to reset any input that shows a stale typed value if cancelled
+  renderIncome();
 }
 
 // Backfill missing ids on bankAccounts (for data saved before ids were introduced)
@@ -5358,6 +5444,7 @@ function captureState() {
   return JSON.stringify({
     budgetIncome:    budget.income,
     incomeAmounts:   incomeAmounts,
+    incomeAmountSchedule: incomeAmountSchedule,
     incomeActuals:   incomeActuals,
     budgetExpenses:  budget.expenses,
     expenseAmounts:  expenseAmounts,
@@ -5387,6 +5474,8 @@ function performUndo() {
   budget.income          = snap.budgetIncome;
   Object.keys(incomeAmounts).forEach(k => delete incomeAmounts[k]);
   Object.assign(incomeAmounts, snap.incomeAmounts);
+  Object.keys(incomeAmountSchedule).forEach(k => delete incomeAmountSchedule[k]);
+  if (snap.incomeAmountSchedule) Object.assign(incomeAmountSchedule, snap.incomeAmountSchedule);
   Object.keys(incomeActuals).forEach(k => delete incomeActuals[k]);
   Object.assign(incomeActuals, snap.incomeActuals);
   budget.expenses        = snap.budgetExpenses;
@@ -9847,6 +9936,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     <button id="pay-edit-reset" class="reset-btn" style="margin-top:8px;display:none" onclick="clearEditPay(+document.getElementById('pay-edit-yr').value, +document.getElementById('pay-edit-mo').value, document.getElementById('pay-edit-id').value, +document.getElementById('pay-edit-idx').value)">
       Reset to default amount
     </button>
+  </div>
+</div>
+<!-- INCOME AMOUNT SCOPE MODAL -->
+<div class="modal-overlay" id="income-scope-overlay" onclick="if(event.target===this)closeIncomeScopeModal()">
+  <div class="modal" style="max-width:400px">
+    <h2 style="font-family:var(--font-serif);font-size:1.4286em;margin-bottom:6px">Apply amount change</h2>
+    <div id="income-scope-name" style="font-family:var(--font-mono);font-size:0.7857em;color:var(--muted);margin-bottom:20px"></div>
+    <p style="font-size:0.9em;color:var(--muted);margin-bottom:18px;line-height:1.5">Do you want this new amount to apply only going forward, or to every month including the past?</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn-primary" onclick="applyIncomeEditForward()" style="width:100%;text-align:left;padding:14px 16px">
+        <div style="font-weight:600" id="income-scope-forward-label">From this month forward</div>
+        <div style="font-size:0.78em;opacity:0.85;margin-top:2px;font-weight:400">Past months keep their current amount</div>
+      </button>
+      <button class="btn-secondary" onclick="applyIncomeEditAll()" style="width:100%;text-align:left;padding:14px 16px">
+        <div style="font-weight:600">All months</div>
+        <div style="font-size:0.78em;opacity:0.85;margin-top:2px;font-weight:400">Change every month, past and future</div>
+      </button>
+      <button class="btn-secondary" onclick="closeIncomeScopeModal()" style="width:100%;justify-content:center;margin-top:4px">Cancel</button>
+    </div>
   </div>
 </div>
 <!-- ADD CREDIT CARD MODAL -->
