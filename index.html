@@ -3556,6 +3556,12 @@ function businessYTD(yr, uptoMo) {
 function newBusinessId(prefix) {
   return (prefix || 'biz') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 }
+// Escape user text for safe HTML rendering
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 // BUSINESS_END
 
 // MORTGAGE_START
@@ -7687,6 +7693,9 @@ function stepMonth(delta) {
   if (document.getElementById('page-mortgage') && document.getElementById('page-mortgage').classList.contains('active')) {
     renderMortgagePage();
   }
+  if (document.getElementById("page-business") && document.getElementById("page-business").classList.contains("active")) {
+    renderBusiness();
+  }
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
       const el = document.getElementById(id);
@@ -7849,6 +7858,9 @@ function selectYear(yr) {
   }
   if (document.getElementById('page-mortgage') && document.getElementById('page-mortgage').classList.contains('active')) {
     renderMortgagePage();
+  }
+  if (document.getElementById("page-business") && document.getElementById("page-business").classList.contains("active")) {
+    renderBusiness();
   }
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
@@ -8666,13 +8678,20 @@ function renderBusiness() {
           paidTxt = '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--income-green);margin-left:6px">received ' + MONTHS[b.paidMo] + ' ' + b.paidDay + getDaySuffix(b.paidDay) + '</span>';
         }
       }
+      const tipTxt = (b.tip && b.tip > 0)
+        ? '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--income-green);margin-left:6px">+' + fmt(b.tip) + ' tip</span>'
+        : '';
+      const descHtml = (b.description && b.description.trim())
+        ? '<div style="font-size:0.78em;color:var(--muted);margin-top:2px;white-space:pre-wrap">' + escapeHtml(b.description) + '</div>'
+        : '';
       html +=
       '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
         '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
           '<div style="display:flex;align-items:center;gap:6px">' + (b.name || 'Untitled event') +
             '<span style="font-size:0.6429em;background:' + st.color + ';color:#111;border-radius:3px;padding:1px 5px">' + st.label + '</span>' +
           '</div>' +
-          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + dayTxt + depositTxt + paidTxt + '</div>' +
+          descHtml +
+          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + dayTxt + depositTxt + tipTxt + paidTxt + '</div>' +
         '</div>' +
         '<div class="item-actions" style="opacity:1">' +
           '<button class="icon-btn" onclick="openBookingModal(\'' + b.id + '\')" title="Edit booking">' +
@@ -9017,7 +9036,10 @@ function openBookingModal(id) {
   const b = id ? businessBookings.find(x => x.id === id) : null;
 
   document.getElementById('booking-name').value    = b ? (b.name || '') : '';
-  document.getElementById('booking-amount').value  = b ? (b.amount || '') : '';
+  document.getElementById('booking-description').value = b ? (b.description || '') : '';
+  // Fee field shows the base fee; older bookings without a separate fee fall back to amount
+  document.getElementById('booking-amount').value  = b ? (b.fee !== undefined ? b.fee : (b.amount || '')) : '';
+  document.getElementById('booking-tip').value     = b ? (b.tip || '') : '';
   document.getElementById('booking-day').value     = b ? (b.day || '') : '';
   document.getElementById('booking-deposit').value = b ? (b.deposit || '') : '';
   document.getElementById('booking-status').value  = b ? (b.status || 'quoted') : 'quoted';
@@ -9060,7 +9082,10 @@ function onBookingStatusChange() {
 
 function saveBooking() {
   const name    = document.getElementById('booking-name').value.trim();
-  const amount  = parseFloat(document.getElementById('booking-amount').value) || 0;
+  const description = document.getElementById('booking-description').value.trim();
+  const fee     = parseFloat(document.getElementById('booking-amount').value) || 0;
+  const tip     = parseFloat(document.getElementById('booking-tip').value) || 0;
+  const amount  = fee + tip; // total drives revenue, calendar, linked income
   const day     = parseInt(document.getElementById('booking-day').value) || null;
   const deposit = parseFloat(document.getElementById('booking-deposit').value) || 0;
   const status  = document.getElementById('booking-status').value || 'quoted';
@@ -9082,14 +9107,15 @@ function saveBooking() {
   if (_editingBookingId) {
     target = businessBookings.find(x => x.id === _editingBookingId);
     if (target) {
-      target.name = name; target.amount = amount; target.day = day;
+      target.name = name; target.description = description;
+      target.fee = fee; target.tip = tip; target.amount = amount; target.day = day;
       target.deposit = deposit; target.status = status; target.addToPersonal = addToPersonal;
       target.paidYr = paidYr; target.paidMo = paidMo; target.paidDay = paidDay;
     }
   } else {
     target = {
       id: newBusinessId('bk'), yr: calYear, mo: calMonth,
-      day, name, amount, deposit, status, addToPersonal,
+      day, name, description, fee, tip, amount, deposit, status, addToPersonal,
       paidYr, paidMo, paidDay,
     };
     businessBookings.push(target);
@@ -10767,8 +10793,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       <input type="text" id="booking-name" placeholder="e.g. Birthday party — Torbay" onkeydown="if(event.key==='Enter')saveBooking()">
     </div>
     <div class="form-field">
-      <label>Amount ($)</label>
-      <input type="number" id="booking-amount" placeholder="0" min="0" onkeydown="if(event.key==='Enter')saveBooking()" style="font-size:1.3em;font-family:var(--font-serif)">
+      <label>Details <span style="color:var(--muted);font-weight:400">(time, place, notes)</span></label>
+      <textarea id="booking-description" placeholder="e.g. 2–4pm at Bowring Park pavilion, 15 kids" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:0.95em;padding:10px 12px;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-field" style="flex:1">
+        <label>Fee ($)</label>
+        <input type="number" id="booking-amount" placeholder="0" min="0" onkeydown="if(event.key==='Enter')saveBooking()" style="font-size:1.2em;font-family:var(--font-serif)">
+      </div>
+      <div class="form-field" style="flex:1">
+        <label>Tip ($)</label>
+        <input type="number" id="booking-tip" placeholder="0" min="0" onkeydown="if(event.key==='Enter')saveBooking()" style="font-size:1.2em;font-family:var(--font-serif)">
+      </div>
     </div>
     <div style="display:flex;gap:12px">
       <div class="form-field" style="flex:1">
