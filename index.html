@@ -2155,11 +2155,11 @@
       <span class="nav-badge" id="nav-badge-creditcards">1 card</span>
     </button>
 
-    <div class="nav-section-label">Business</div>
+    <div class="nav-section-label" id="nav-business-section-label" style="display:none">Business</div>
 
-    <button class="nav-item" onclick="navTo('business')" id="nav-business">
+    <button class="nav-item" onclick="navTo('business')" id="nav-business" style="display:none">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h12v8H2z"/><path d="M5 6V3h6v3"/><path d="M2 10h12"/></svg></span>
-      Twinkle Pop Face
+      <span id="nav-business-label">My Business</span>
       <span class="nav-badge" id="nav-badge-business">$0</span>
     </button>
 
@@ -3618,6 +3618,8 @@ function loadState() {
     if (saved.businessExpenses)         businessExpenses = saved.businessExpenses;
     if (saved.businessExpenseSchedule)  businessExpenseSchedule = saved.businessExpenseSchedule;
     if (saved.businessMeta)             Object.assign(businessMeta, saved.businessMeta);
+    if (saved.businessEnabled !== undefined) appSettings.businessEnabled = saved.businessEnabled;
+    if (saved.businessName !== undefined)    appSettings.businessName = saved.businessName;
 
     // Sanitize monthlyDebts: strip null holes from old snapshots
     Object.keys(monthlyDebts).forEach(function(k) {
@@ -3666,6 +3668,8 @@ function buildSavePayload() {
     businessExpenses,
     businessExpenseSchedule,
     businessMeta,
+    businessEnabled: appSettings.businessEnabled,
+    businessName: appSettings.businessName,
   };
 }
 
@@ -3788,6 +3792,8 @@ async function loadFromGist() {
     if (saved.businessExpenses)         businessExpenses = saved.businessExpenses;
     if (saved.businessExpenseSchedule)  businessExpenseSchedule = saved.businessExpenseSchedule;
     if (saved.businessMeta)             Object.assign(businessMeta, saved.businessMeta);
+    if (saved.businessEnabled !== undefined) appSettings.businessEnabled = saved.businessEnabled;
+    if (saved.businessName !== undefined)    appSettings.businessName = saved.businessName;
     ensureBankIds();
 
     // Sanitize monthlyDebts: remove null/undefined entries that can cause crashes
@@ -7851,7 +7857,7 @@ const PAGE_TITLES = {
   summary: 'Summary', income: 'Money In', expenses: 'Money Out',
   debt: 'Debt', investments: 'Investments', calendar: 'Calendar',
   creditcards: 'Credit Cards', bankaccounts: 'Bank Accounts',
-  mortgage: 'Mortgage', business: 'Twinkle Pop Face'
+  mortgage: 'Mortgage', business: 'My Business'
 };
 
 function navTo(page) {
@@ -8022,6 +8028,8 @@ let appSettings = {
   rogersPct:      50,
   rogersKeep:     500,
   hiddenBadges:   {},   // { 'income': true, 'expenses': true, ... }
+  businessEnabled: false, // show/hide the Business section
+  businessName:    '',    // user-defined business name (e.g. "Twinkle Pop Face")
 };
 
 function openSettings() {
@@ -8097,6 +8105,10 @@ function syncSettingsUI() {
   sel('s-font-size-2',  appSettings.fontSize  || 'large');
   sel('s-font-style-2', appSettings.fontStyle || 'sans');
   chk('s-due-soon-enabled', appSettings.dueSoonEnabled !== false);
+  chk('s-business-enabled', !!appSettings.businessEnabled);
+  sel('s-business-name', appSettings.businessName || '');
+  const bizNameRow = document.getElementById('s-business-name-row');
+  if (bizNameRow) bizNameRow.style.display = appSettings.businessEnabled ? '' : 'none';
   buildBadgeToggles();
 }
 function applySettings() {
@@ -8125,6 +8137,14 @@ function applySettings() {
   if (dseEl !== null) appSettings.dueSoonEnabled = dseEl.checked;
   const fontSize  = val2('s-font-size');  if (fontSize)  appSettings.fontSize  = fontSize;
   const fontStyle = val2('s-font-style'); if (fontStyle) appSettings.fontStyle = fontStyle;
+  // Business section
+  const bizEnEl = document.getElementById('s-business-enabled');
+  if (bizEnEl) appSettings.businessEnabled = bizEnEl.checked;
+  const bizNameEl = document.getElementById('s-business-name');
+  if (bizNameEl) appSettings.businessName = bizNameEl.value;
+  const bizNameRow = document.getElementById('s-business-name-row');
+  if (bizNameRow) bizNameRow.style.display = appSettings.businessEnabled ? '' : 'none';
+  applyBusinessVisibility();
   // Keep mirrors in sync
   const sel = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
   sel('s-theme',       appSettings.theme);      sel('s-theme-2',      appSettings.theme);
@@ -8715,6 +8735,29 @@ function updateBusinessBadge() {
   if (el) {
     const net = businessNetForMonth(calYear, calMonth);
     el.textContent = (net >= 0 ? '+' : '-') + fmt(Math.abs(net));
+  }
+}
+
+// Display name for the business section (falls back to a generic label)
+function businessDisplayName() {
+  return (appSettings.businessName && appSettings.businessName.trim()) || 'My Business';
+}
+
+// Show/hide the Business nav item and update its label + page title from settings.
+function applyBusinessVisibility() {
+  const navItem = document.getElementById('nav-business');
+  const navLabel = document.getElementById('nav-business-label');
+  const sectionLabel = document.getElementById('nav-business-section-label');
+  const enabled = !!appSettings.businessEnabled;
+  const name = businessDisplayName();
+  if (navItem) navItem.style.display = enabled ? '' : 'none';
+  if (sectionLabel) sectionLabel.style.display = enabled ? '' : 'none';
+  if (navLabel) navLabel.textContent = name;
+  PAGE_TITLES.business = name;
+  // If business is disabled while its page is open, fall back to Summary
+  if (!enabled) {
+    const pg = document.getElementById('page-business');
+    if (pg && pg.classList.contains('active')) navTo('summary');
   }
 }
 
@@ -9571,6 +9614,7 @@ function applySettingsToDOM(rerender) {
   if (rKeepInp) rKeepInp.value = appSettings.rogersKeep ?? 500;
   // Only re-render expenses when filter-related settings changed
   applyBadgeVisibility();
+  applyBusinessVisibility();
   if (rerender) {
     renderExpenses();
     setTimeout(() => {
@@ -9640,6 +9684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderMortgagePage();
   updateSummary();
   renderCalendar();
+  applyBusinessVisibility();
   syncUndoBtn();
 
   setTimeout(() => {
@@ -9666,6 +9711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
         renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
+        applyBusinessVisibility();
         setSyncStatus('ok', '\u2713 Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
       } else {
@@ -10237,6 +10283,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <option value="0">Sunday</option>
                 <option value="1">Monday</option>
               </select>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Business</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Show business section</div>
+                <div class="setting-sub">Track bookings, expenses &amp; profit for a business</div>
+              </div>
+              <label class="toggle" style="flex-shrink:0">
+                <input type="checkbox" id="s-business-enabled" onchange="applySettings()">
+                <div class="toggle-track"></div>
+              </label>
+            </div>
+            <div class="setting-row" id="s-business-name-row">
+              <div style="flex:1">
+                <div class="setting-label">Business name</div>
+                <div class="setting-sub">Shown in the side panel &amp; page title</div>
+              </div>
+              <input type="text" id="s-business-name" placeholder="e.g. Twinkle Pop Face" onchange="applySettings()" oninput="applySettings()"
+                style="flex-shrink:0;width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:0.95em;padding:8px 10px">
             </div>
           </div>
 
