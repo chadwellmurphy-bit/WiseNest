@@ -174,11 +174,12 @@
   .nav-section-label {
     font-family:var(--font-mono);
     font-size: 0.6429em;
-    color: var(--muted);
+    color: var(--text);
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .1em;
     padding: 12px 12px 4px;
-    opacity: .6;
+    opacity: .85;
   }
 
   .nav-footer {
@@ -8726,6 +8727,9 @@ function renderBusiness() {
   html += '</div></div>';
   html += '<div style="margin-top:8px"><button class="add-btn" onclick="openBizExpenseModal(null)" style="border-radius:8px">+ Add Expense</button></div>';
 
+  // Yearly breakdown table (Jan → current month)
+  html += buildBusinessYearTableHTML(yr, mo);
+
   container.innerHTML = html;
   updateBusinessBadge();
 }
@@ -8813,6 +8817,49 @@ function openBookingModalOnDay(day) {
   openBookingModal(null);
   const dayEl = document.getElementById('booking-day');
   if (dayEl) dayEl.value = day;
+}
+
+// Build a month-by-month yearly breakdown (Jan → current month) of revenue, expenses, profit.
+function buildBusinessYearTableHTML(yr, uptoMo) {
+  let rows = '';
+  let tR = 0, tE = 0, tN = 0;
+  for (let m = 0; m <= uptoMo; m++) {
+    const rev = businessRevenueForMonth(yr, m);
+    const exp = businessExpensesForMonth(yr, m);
+    const net = rev - exp;
+    const hasActivity = getBusinessBookingsForMonth(yr, m).length > 0 || getBusinessExpensesForMonth(yr, m).length > 0;
+    tR += rev; tE += exp; tN += net;
+    const dim = (v) => hasActivity ? '' : 'opacity:0.4;';
+    const netColor = net > 0 ? 'var(--income-green)' : net < 0 ? 'var(--expense-red)' : 'var(--muted)';
+    rows +=
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:0.78em;' + dim() + '">' +
+        '<div style="color:var(--text)">' + MONTHS[m] + '</div>' +
+        '<div style="text-align:right;color:var(--income-green)">' + fmt(rev) + '</div>' +
+        '<div style="text-align:right;color:var(--expense-red)">' + fmt(exp) + '</div>' +
+        '<div style="text-align:right;color:' + netColor + '">' + (net >= 0 ? '' : '-') + fmt(Math.abs(net)) + '</div>' +
+      '</div>';
+  }
+  const tNetColor = tN >= 0 ? 'var(--income-green)' : 'var(--expense-red)';
+  const totalRow =
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;padding:10px 12px;font-family:var(--font-mono);font-size:0.82em;font-weight:700;background:var(--surface2);border-radius:0 0 8px 8px">' +
+      '<div style="color:var(--text)">Total</div>' +
+      '<div style="text-align:right;color:var(--income-green)">' + fmt(tR) + '</div>' +
+      '<div style="text-align:right;color:var(--expense-red)">' + fmt(tE) + '</div>' +
+      '<div style="text-align:right;color:' + tNetColor + '">' + (tN >= 0 ? '+' : '-') + fmt(Math.abs(tN)) + '</div>' +
+    '</div>';
+  const header =
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;padding:8px 12px;font-family:var(--font-mono);font-size:0.64em;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);border-bottom:1px solid var(--border)">' +
+      '<div>Month</div>' +
+      '<div style="text-align:right">Revenue</div>' +
+      '<div style="text-align:right">Expenses</div>' +
+      '<div style="text-align:right">Profit</div>' +
+    '</div>';
+
+  return '<div class="section" style="margin-top:16px"><div class="section-header" style="cursor:default">' +
+    '<div class="section-title"><div class="section-dot" style="background:var(--accent)"></div>' + yr + ' Year to Date</div>' +
+    '</div><div class="section-body is-open" style="max-height:none;padding:0">' +
+    header + rows + totalRow +
+    '</div></div>';
 }
 
 // ── Booking add/edit modal ──
