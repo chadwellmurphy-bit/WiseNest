@@ -2155,6 +2155,14 @@
       <span class="nav-badge" id="nav-badge-creditcards">1 card</span>
     </button>
 
+    <div class="nav-section-label">Business</div>
+
+    <button class="nav-item" onclick="navTo('business')" id="nav-business">
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h12v8H2z"/><path d="M5 6V3h6v3"/><path d="M2 10h12"/></svg></span>
+      Twinkle Pop Face
+      <span class="nav-badge" id="nav-badge-business">$0</span>
+    </button>
+
     <div class="nav-section-label">Tools</div>
 
     <button class="nav-item" onclick="navTo('calendar')" id="nav-calendar">
@@ -2396,6 +2404,11 @@
     <div style="margin-top:8px">
       <button class="add-btn" onclick="openAddCardModal()" style="border-radius:8px">+ Add Credit Card</button>
     </div>
+  </div>
+
+  <!-- ══ PAGE: BUSINESS (Twinkle Pop Face) ══════════════════ -->
+  <div class="page" id="page-business">
+    <div id="business-content"></div>
   </div>
 
   <!-- ══ PAGE: INCOME ═══════════════════════════════════════ -->
@@ -3457,6 +3470,87 @@ const bankAccounts = [
 let monthlyBankAccounts = {};
 // MONTHLY_BANK_END
 
+// BUSINESS_START
+// Twinkle Pop Face business module. Kept separate from personal budget data.
+// bookings: event-based revenue. Each: { id, yr, mo, day, name, amount, deposit, status }
+//   status: 'quoted' | 'confirmed' | 'paid'   deposit: amount already received (optional)
+let businessBookings = [];
+// businessExpenses: recurring/one-off business costs. Each:
+//   { id, name, category, amount, yr, mo, oneTime }  (oneTime false = monthly recurring)
+let businessExpenses = [];
+// Effective-dated amount changes for recurring business expenses: { id: [{yr,mo,amount}] }
+let businessExpenseSchedule = {};
+// Tax-friendly business expense categories (CRA-aligned; extend later for HST/mileage)
+const BUSINESS_CATEGORIES = [
+  'Supplies', 'Insurance', 'Booth / Vendor Fees', 'Advertising',
+  'Vehicle / Mileage', 'Equipment', 'Bank / Fees', 'Other',
+];
+// Reserved for future fuller tracking (HST collected/paid, mileage log). Not used yet.
+let businessMeta = { hstEnabled: false, mileageEnabled: false };
+// ── Business data helpers (foundation for the Business tab) ──
+// Bookings whose event falls in a given month
+function getBusinessBookingsForMonth(yr, mo) {
+  return businessBookings.filter(b => b.yr === yr && b.mo === mo);
+}
+// Total revenue booked in a month (full booking amounts, regardless of paid status)
+function businessRevenueForMonth(yr, mo) {
+  return getBusinessBookingsForMonth(yr, mo).reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+}
+// Effective amount for a recurring business expense in a given month (effective-dated)
+function getBusinessExpenseAmountForMonth(item, yr, mo) {
+  const sched = businessExpenseSchedule[item.id];
+  if (sched && sched.length) {
+    let best = null;
+    for (const c of sched) {
+      const onOrBefore = (c.yr < yr) || (c.yr === yr && c.mo <= mo);
+      if (onOrBefore && (best === null || c.yr > best.yr || (c.yr === best.yr && c.mo > best.mo))) best = c;
+    }
+    if (best) return best.amount;
+  }
+  return parseFloat(item.amount) || 0;
+}
+// Business expenses active in a month (recurring always; one-time only in their month)
+function getBusinessExpensesForMonth(yr, mo) {
+  return businessExpenses.filter(e => {
+    if (e.oneTime) return e.yr === yr && e.mo === mo;
+    // recurring: active from its start month onward (if a start is set)
+    if (e.yr !== undefined && e.mo !== undefined) {
+      if (yr < e.yr || (yr === e.yr && mo < e.mo)) return false;
+    }
+    return true;
+  });
+}
+// Total business expenses in a month
+function businessExpensesForMonth(yr, mo) {
+  return getBusinessExpensesForMonth(yr, mo)
+    .reduce((s, e) => s + (e.oneTime ? (parseFloat(e.amount) || 0) : getBusinessExpenseAmountForMonth(e, yr, mo)), 0);
+}
+// Net profit for a month
+function businessNetForMonth(yr, mo) {
+  return businessRevenueForMonth(yr, mo) - businessExpensesForMonth(yr, mo);
+}
+// Year-to-date business totals from January up to and including the given month.
+// Counts only months that have any business activity (a booking or expense).
+function businessYTD(yr, uptoMo) {
+  const last = (uptoMo === undefined) ? 11 : uptoMo;
+  let revenue = 0, expenses = 0, months = 0;
+  for (let m = 0; m <= last; m++) {
+    const hasBookings = getBusinessBookingsForMonth(yr, m).length > 0;
+    const hasExpenses = getBusinessExpensesForMonth(yr, m).length > 0;
+    if (hasBookings || hasExpenses) {
+      revenue  += businessRevenueForMonth(yr, m);
+      expenses += businessExpensesForMonth(yr, m);
+      months++;
+    }
+  }
+  return { revenue, expenses, net: revenue - expenses, months };
+}
+// Simple id generator for business records
+function newBusinessId(prefix) {
+  return (prefix || 'biz') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+}
+// BUSINESS_END
+
 // MORTGAGE_START
 let mortgageData = {
   lender: '',
@@ -3520,6 +3614,10 @@ function loadState() {
     }
     sanitizeMonthlyBankAccounts();
     if (saved.mortgageData) Object.assign(mortgageData, saved.mortgageData);
+    if (saved.businessBookings)         businessBookings = saved.businessBookings;
+    if (saved.businessExpenses)         businessExpenses = saved.businessExpenses;
+    if (saved.businessExpenseSchedule)  businessExpenseSchedule = saved.businessExpenseSchedule;
+    if (saved.businessMeta)             Object.assign(businessMeta, saved.businessMeta);
 
     // Sanitize monthlyDebts: strip null holes from old snapshots
     Object.keys(monthlyDebts).forEach(function(k) {
@@ -3564,6 +3662,10 @@ function buildSavePayload() {
     bankAccountsData: bankAccounts,
     monthlyBankAccounts,
     mortgageData,
+    businessBookings,
+    businessExpenses,
+    businessExpenseSchedule,
+    businessMeta,
   };
 }
 
@@ -3682,6 +3784,10 @@ async function loadFromGist() {
     }
     sanitizeMonthlyBankAccounts();
     if (saved.mortgageData)    Object.assign(mortgageData, saved.mortgageData);
+    if (saved.businessBookings)         businessBookings = saved.businessBookings;
+    if (saved.businessExpenses)         businessExpenses = saved.businessExpenses;
+    if (saved.businessExpenseSchedule)  businessExpenseSchedule = saved.businessExpenseSchedule;
+    if (saved.businessMeta)             Object.assign(businessMeta, saved.businessMeta);
     ensureBankIds();
 
     // Sanitize monthlyDebts: remove null/undefined entries that can cause crashes
@@ -4967,6 +5073,7 @@ function yearlyLeftover(yr, uptoMo) {
 
 function updateSummary() {
   const totalIncome = totalActualMonthlyIncome(calYear, calMonth);
+  if (typeof updateBusinessBadge === 'function') updateBusinessBadge();
   const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
   const bal = totalIncome - totalExpenses;
   // Clamp percentages so refunds (negative expenses) don't produce nonsense values
@@ -5463,6 +5570,10 @@ function captureState() {
     bankAccounts:    bankAccounts,
     monthlyBankAccounts: monthlyBankAccounts,
     mortgageData:    JSON.parse(JSON.stringify(mortgageData)),
+    businessBookings: businessBookings,
+    businessExpenses: businessExpenses,
+    businessExpenseSchedule: businessExpenseSchedule,
+    businessMeta:    JSON.parse(JSON.stringify(businessMeta)),
   });
 }
 
@@ -5511,9 +5622,17 @@ function performUndo() {
   if (snap.mortgageData) {
     Object.assign(mortgageData, snap.mortgageData);
   }
+  if (snap.businessBookings) businessBookings = snap.businessBookings;
+  if (snap.businessExpenses) businessExpenses = snap.businessExpenses;
+  if (snap.businessExpenseSchedule) {
+    Object.keys(businessExpenseSchedule).forEach(k => delete businessExpenseSchedule[k]);
+    Object.assign(businessExpenseSchedule, snap.businessExpenseSchedule);
+  }
+  if (snap.businessMeta) Object.assign(businessMeta, snap.businessMeta);
   renderIncome(); renderExpenses(); renderDebts(); renderInvestments(); renderBankAccounts(); renderMortgagePage();
   updateSummary(); renderCalendar();
   if (document.getElementById('page-creditcards').classList.contains('active')) renderCreditCardsPage();
+  if (typeof renderBusiness === 'function' && document.getElementById('page-business') && document.getElementById('page-business').classList.contains('active')) renderBusiness();
   syncUndoBtn();
 }
 
@@ -7732,7 +7851,7 @@ const PAGE_TITLES = {
   summary: 'Summary', income: 'Money In', expenses: 'Money Out',
   debt: 'Debt', investments: 'Investments', calendar: 'Calendar',
   creditcards: 'Credit Cards', bankaccounts: 'Bank Accounts',
-  mortgage: 'Mortgage'
+  mortgage: 'Mortgage', business: 'Twinkle Pop Face'
 };
 
 function navTo(page) {
@@ -7758,6 +7877,8 @@ function navTo(page) {
   if (page === 'bankaccounts') renderBankAccounts();
   // Trigger mortgage render when switching to it
   if (page === 'mortgage') renderMortgagePage();
+  // Trigger business render when switching to it
+  if (page === 'business') renderBusiness();
   // Reopen section bodies after display change
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
@@ -8444,6 +8565,359 @@ function cardStatementBalance(card, yr, mo) {
   const actual = getCCActual(card.id, yr, mo);
   if (actual !== null) return actual;
   return effectiveRecurring;
+}
+
+// ─── BUSINESS: TWINKLE POP FACE ──────────────────────────────────
+// Status badge styling for bookings
+const BOOKING_STATUS = {
+  quoted:    { label: 'Quoted',    color: 'var(--muted)' },
+  confirmed: { label: 'Confirmed', color: 'var(--accent2)' },
+  paid:      { label: 'Paid',      color: 'var(--income-green)' },
+};
+
+function renderBusiness() {
+  const container = document.getElementById('business-content');
+  if (!container) return;
+  const yr = calYear, mo = calMonth;
+  const monthName = MONTHS[mo] + ' ' + yr;
+
+  const bookings = getBusinessBookingsForMonth(yr, mo)
+    .slice()
+    .sort((a, b) => (a.day || 0) - (b.day || 0));
+  const revenue = businessRevenueForMonth(yr, mo);
+  const expenseTotalTop = businessExpensesForMonth(yr, mo);
+  const netProfit = revenue - expenseTotalTop;
+  const ytd = businessYTD(yr, mo);
+
+  // Summary tile row: Revenue / Expenses / Net Profit
+  let html = '';
+  html += '<div class="rogers-meters" style="grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:12px">' +
+    '<div class="rogers-meter">' +
+      '<div class="rm-label">Revenue</div>' +
+      '<div class="rm-value green">' + fmt(revenue) + '</div>' +
+      '<div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">' + bookings.length + ' booking' + (bookings.length === 1 ? '' : 's') + '</div>' +
+    '</div>' +
+    '<div class="rogers-meter">' +
+      '<div class="rm-label">Expenses</div>' +
+      '<div class="rm-value red">' + fmt(expenseTotalTop) + '</div>' +
+      '<div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">' + MONTHS[mo] + ' costs</div>' +
+    '</div>' +
+    '<div class="rogers-meter">' +
+      '<div class="rm-label">Net profit</div>' +
+      '<div class="rm-value" style="color:' + (netProfit >= 0 ? 'var(--income-green)' : 'var(--expense-red)') + '">' + (netProfit >= 0 ? '+' : '-') + fmt(Math.abs(netProfit)) + '</div>' +
+      '<div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">revenue − expenses</div>' +
+    '</div>' +
+  '</div>';
+
+  // Year-to-date profit tile (running, like Yearly Left Over)
+  html += '<div class="stat-card" style="border-color:rgba(62,255,163,0.3);margin-bottom:16px">' +
+    '<div class="label">YTD Net Profit &middot; ' + yr + '</div>' +
+    '<div class="value" style="color:' + (ytd.net >= 0 ? 'var(--income-green)' : 'var(--expense-red)') + '">' + (ytd.net >= 0 ? '+' : '-') + fmt(Math.abs(ytd.net)) + '</div>' +
+    '<div class="sub">' + fmt(ytd.revenue) + ' revenue &minus; ' + fmt(ytd.expenses) + ' expenses</div>' +
+    '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px">' +
+      (ytd.months === 0 ? 'No activity yet this year' : 'across ' + ytd.months + ' month' + (ytd.months === 1 ? '' : 's') + ' \u00b7 avg ' + fmt(ytd.net / ytd.months) + '/mo') +
+    '</div>' +
+  '</div>';
+
+  // Bookings calendar (month-at-a-glance)
+  html += buildBookingsCalendarHTML(yr, mo);
+
+  // Bookings section
+  html += '<div class="section" id="business-bookings-section">' +
+    '<div class="section-header" style="cursor:default">' +
+      '<div class="section-title"><div class="section-dot" style="background:var(--income-green)"></div>Bookings</div>' +
+      '<div class="section-total" style="color:var(--income-green)">' + fmt(revenue) + '</div>' +
+    '</div>' +
+    '<div class="section-body is-open" style="max-height:none">';
+
+  if (bookings.length === 0) {
+    html += '<div style="padding:24px 20px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:0.8em">No bookings yet for ' + monthName + '.<br>Add your first event below.</div>';
+  } else {
+    bookings.forEach(b => {
+      const st = BOOKING_STATUS[b.status] || BOOKING_STATUS.quoted;
+      const dayTxt = b.day ? (MONTHS[mo] + ' ' + b.day + getDaySuffix(b.day)) : 'Date TBD';
+      const depositTxt = (b.deposit && b.deposit > 0)
+        ? '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-left:6px">deposit ' + fmt(b.deposit) + '</span>'
+        : '';
+      html +=
+      '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
+        '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
+          '<div style="display:flex;align-items:center;gap:6px">' + (b.name || 'Untitled event') +
+            '<span style="font-size:0.6429em;background:' + st.color + ';color:#111;border-radius:3px;padding:1px 5px">' + st.label + '</span>' +
+          '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + dayTxt + depositTxt + '</div>' +
+        '</div>' +
+        '<div class="item-actions" style="opacity:1">' +
+          '<button class="icon-btn" onclick="openBookingModal(\'' + b.id + '\')" title="Edit booking">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>' +
+          '</button>' +
+          '<button class="icon-btn delete" onclick="confirmDeleteBooking(\'' + b.id + '\')" title="Delete booking">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>' +
+          '</button>' +
+        '</div>' +
+        '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--income-green);text-align:right;min-width:76px">' + fmt(parseFloat(b.amount) || 0) + '</div>' +
+      '</div>';
+    });
+  }
+  html += '</div></div>';
+
+  // Add booking button
+  html += '<div style="margin-top:8px"><button class="add-btn" onclick="openBookingModal(null)" style="border-radius:8px">+ Add Booking</button></div>';
+
+  // ── Business expenses section ──
+  const bizExpenses = getBusinessExpensesForMonth(yr, mo)
+    .slice()
+    .sort((a, b) => (a.category || '').localeCompare(b.category || '') || (a.name || '').localeCompare(b.name || ''));
+  const expenseTotal = businessExpensesForMonth(yr, mo);
+
+  html += '<div class="section" id="business-expenses-section" style="margin-top:16px">' +
+    '<div class="section-header" style="cursor:default">' +
+      '<div class="section-title"><div class="section-dot" style="background:var(--expense-red)"></div>Expenses</div>' +
+      '<div class="section-total" style="color:var(--expense-red)">' + fmt(expenseTotal) + '</div>' +
+    '</div>' +
+    '<div class="section-body is-open" style="max-height:none">';
+
+  if (bizExpenses.length === 0) {
+    html += '<div style="padding:24px 20px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:0.8em">No expenses yet for ' + monthName + '.<br>Track supplies, insurance, fees and more below.</div>';
+  } else {
+    bizExpenses.forEach(e => {
+      const amt = e.oneTime ? (parseFloat(e.amount) || 0) : getBusinessExpenseAmountForMonth(e, yr, mo);
+      const freqTag = e.oneTime
+        ? '<span style="font-size:0.6429em;background:var(--accent2);color:#111;border-radius:3px;padding:1px 5px;margin-left:6px">one-time</span>'
+        : '<span style="font-size:0.6429em;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:1px 5px;margin-left:6px">monthly</span>';
+      html +=
+      '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
+        '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
+          '<div style="display:flex;align-items:center;gap:2px">' + (e.name || 'Untitled') + freqTag + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + (e.category || 'Other') + '</div>' +
+        '</div>' +
+        '<div class="item-actions" style="opacity:1">' +
+          '<button class="icon-btn" onclick="openBizExpenseModal(\'' + e.id + '\')" title="Edit expense">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>' +
+          '</button>' +
+          '<button class="icon-btn delete" onclick="confirmDeleteBizExpense(\'' + e.id + '\')" title="Delete expense">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>' +
+          '</button>' +
+        '</div>' +
+        '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--expense-red);text-align:right;min-width:76px">' + fmt(amt) + '</div>' +
+      '</div>';
+    });
+  }
+  html += '</div></div>';
+  html += '<div style="margin-top:8px"><button class="add-btn" onclick="openBizExpenseModal(null)" style="border-radius:8px">+ Add Expense</button></div>';
+
+  container.innerHTML = html;
+  updateBusinessBadge();
+}
+
+function updateBusinessBadge() {
+  const el = document.getElementById('nav-badge-business');
+  if (el) {
+    const net = businessNetForMonth(calYear, calMonth);
+    el.textContent = (net >= 0 ? '+' : '-') + fmt(Math.abs(net));
+  }
+}
+
+// Build a compact bookings calendar for the current business month.
+// Days with bookings are highlighted; clicking a day adds a booking on that date,
+// clicking an existing booking's day count opens the first booking that day.
+function buildBookingsCalendarHTML(yr, mo) {
+  const dim = new Date(yr, mo + 1, 0).getDate();
+  const firstDay = new Date(yr, mo, 1).getDay();
+  const today = new Date();
+  const isCurMo = today.getFullYear() === yr && today.getMonth() === mo;
+  const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  // Map day -> bookings on that day
+  const byDay = {};
+  getBusinessBookingsForMonth(yr, mo).forEach(b => {
+    if (b.day) { (byDay[b.day] = byDay[b.day] || []).push(b); }
+  });
+
+  let out = '<div class="section" style="margin-bottom:16px"><div class="section-header" style="cursor:default">' +
+    '<div class="section-title"><div class="section-dot" style="background:var(--accent2)"></div>Bookings Calendar</div>' +
+    '<div class="section-total" style="font-family:var(--font-mono);font-size:0.72em;color:var(--muted)">tap a day to add</div>' +
+    '</div><div class="section-body is-open" style="max-height:none;padding:12px">';
+
+  out += '<div class="cal-grid">';
+  DAY_NAMES.forEach(n => out += '<div class="cal-dow">' + n + '</div>');
+  for (let i = 0; i < firstDay; i++) out += '<div class="cal-cell cal-empty"></div>';
+
+  for (let d = 1; d <= dim; d++) {
+    const dayBookings = byDay[d] || [];
+    const has = dayBookings.length > 0;
+    const dayTotal = dayBookings.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+    const isToday = isCurMo && d === today.getDate();
+    let cellClass = 'cal-cell';
+    if (isToday) cellClass += ' cal-today';
+    if (has) cellClass += ' cal-has-income';
+    // Clicking: if the day has bookings, open the first one; else add a new booking on this day
+    const onclick = has
+      ? "openBookingModal('" + dayBookings[0].id + "')"
+      : "openBookingModalOnDay(" + d + ")";
+    out += '<div class="' + cellClass + '" style="position:relative" onclick="' + onclick + '">' +
+      '<div class="cal-day">' + d + '</div>' +
+      (has ? '<div class="cal-entry-income">' + fmtMoney(dayTotal) + '</div>' : '') +
+      (dayBookings.length > 1 ? '<div class="cal-override-badge">' + dayBookings.length + '</div>' : '') +
+      '</div>';
+  }
+  out += '</div></div></div>';
+  return out;
+}
+
+// Open the booking modal pre-set to a specific day of the current month
+function openBookingModalOnDay(day) {
+  openBookingModal(null);
+  const dayEl = document.getElementById('booking-day');
+  if (dayEl) dayEl.value = day;
+}
+
+// ── Booking add/edit modal ──
+let _editingBookingId = null;
+
+function openBookingModal(id) {
+  _editingBookingId = id;
+  const overlay = document.getElementById('booking-modal-overlay');
+  const titleEl = document.getElementById('booking-modal-title');
+  const b = id ? businessBookings.find(x => x.id === id) : null;
+
+  document.getElementById('booking-name').value    = b ? (b.name || '') : '';
+  document.getElementById('booking-amount').value  = b ? (b.amount || '') : '';
+  document.getElementById('booking-day').value     = b ? (b.day || '') : '';
+  document.getElementById('booking-deposit').value = b ? (b.deposit || '') : '';
+  document.getElementById('booking-status').value  = b ? (b.status || 'quoted') : 'quoted';
+  if (titleEl) titleEl.textContent = (b ? 'Edit Booking' : 'Add Booking') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
+  const delBtn = document.getElementById('booking-delete-btn');
+  if (delBtn) delBtn.style.display = b ? 'block' : 'none';
+
+  if (overlay) overlay.classList.add('open');
+  setTimeout(() => { const el = document.getElementById('booking-name'); if (el) el.focus(); }, 100);
+}
+
+function closeBookingModal(e) {
+  if (e && e.target !== document.getElementById('booking-modal-overlay')) return;
+  const overlay = document.getElementById('booking-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+  _editingBookingId = null;
+}
+
+function saveBooking() {
+  const name    = document.getElementById('booking-name').value.trim();
+  const amount  = parseFloat(document.getElementById('booking-amount').value) || 0;
+  const day     = parseInt(document.getElementById('booking-day').value) || null;
+  const deposit = parseFloat(document.getElementById('booking-deposit').value) || 0;
+  const status  = document.getElementById('booking-status').value || 'quoted';
+  if (!name && amount === 0) { closeBookingModal(); return; }
+
+  pushUndo();
+  if (_editingBookingId) {
+    const b = businessBookings.find(x => x.id === _editingBookingId);
+    if (b) { b.name = name; b.amount = amount; b.day = day; b.deposit = deposit; b.status = status; }
+  } else {
+    businessBookings.push({
+      id: newBusinessId('bk'), yr: calYear, mo: calMonth,
+      day, name, amount, deposit, status,
+    });
+  }
+  _editingBookingId = null;
+  const overlay = document.getElementById('booking-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+  renderBusiness();
+  updateSummary();
+  renderCalendar();
+}
+
+function confirmDeleteBooking(id) {
+  const b = businessBookings.find(x => x.id === id);
+  const label = b ? (b.name || 'this booking') : 'this booking';
+  if (!confirm('Delete "' + label + '"?')) return;
+  pushUndo();
+  const idx = businessBookings.findIndex(x => x.id === id);
+  if (idx !== -1) businessBookings.splice(idx, 1);
+  const overlay = document.getElementById('booking-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+  renderBusiness();
+  updateSummary();
+  renderCalendar();
+}
+
+// ── Business expense add/edit modal ──
+let _editingBizExpenseId = null;
+
+function openBizExpenseModal(id) {
+  _editingBizExpenseId = id;
+  const overlay = document.getElementById('biz-expense-modal-overlay');
+  const titleEl = document.getElementById('biz-expense-modal-title');
+  const e = id ? businessExpenses.find(x => x.id === id) : null;
+
+  // Populate category dropdown
+  const catSel = document.getElementById('biz-expense-category');
+  if (catSel && !catSel.dataset.populated) {
+    catSel.innerHTML = BUSINESS_CATEGORIES.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+    catSel.dataset.populated = '1';
+  }
+
+  document.getElementById('biz-expense-name').value     = e ? (e.name || '') : '';
+  document.getElementById('biz-expense-amount').value   = e ? (e.amount || '') : '';
+  document.getElementById('biz-expense-category').value = e ? (e.category || 'Supplies') : 'Supplies';
+  // Frequency radio: monthly (recurring) vs one-time
+  const isOneTime = e ? !!e.oneTime : false;
+  document.getElementById('biz-expense-freq').value = isOneTime ? 'onetime' : 'monthly';
+  if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
+  const delBtn = document.getElementById('biz-expense-delete-btn');
+  if (delBtn) delBtn.style.display = e ? 'block' : 'none';
+
+  if (overlay) overlay.classList.add('open');
+  setTimeout(() => { const el = document.getElementById('biz-expense-name'); if (el) el.focus(); }, 100);
+}
+
+function closeBizExpenseModal(e) {
+  if (e && e.target !== document.getElementById('biz-expense-modal-overlay')) return;
+  const overlay = document.getElementById('biz-expense-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+  _editingBizExpenseId = null;
+}
+
+function saveBizExpense() {
+  const name     = document.getElementById('biz-expense-name').value.trim();
+  const amount   = parseFloat(document.getElementById('biz-expense-amount').value) || 0;
+  const category = document.getElementById('biz-expense-category').value || 'Other';
+  const oneTime  = document.getElementById('biz-expense-freq').value === 'onetime';
+  if (!name && amount === 0) { closeBizExpenseModal(); return; }
+
+  pushUndo();
+  if (_editingBizExpenseId) {
+    const e = businessExpenses.find(x => x.id === _editingBizExpenseId);
+    if (e) {
+      e.name = name; e.amount = amount; e.category = category; e.oneTime = oneTime;
+      // Keep the item's start month; recurring items use yr/mo as their start.
+      if (e.yr === undefined) { e.yr = calYear; e.mo = calMonth; }
+    }
+  } else {
+    businessExpenses.push({
+      id: newBusinessId('be'), name, amount, category, oneTime,
+      yr: calYear, mo: calMonth,
+    });
+  }
+  _editingBizExpenseId = null;
+  const overlay = document.getElementById('biz-expense-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+  renderBusiness();
+  updateSummary();
+}
+
+function confirmDeleteBizExpense(id) {
+  const e = businessExpenses.find(x => x.id === id);
+  const label = e ? (e.name || 'this expense') : 'this expense';
+  if (!confirm('Delete "' + label + '"?')) return;
+  pushUndo();
+  const idx = businessExpenses.findIndex(x => x.id === id);
+  if (idx !== -1) businessExpenses.splice(idx, 1);
+  delete businessExpenseSchedule[id];
+  const overlay = document.getElementById('biz-expense-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+  renderBusiness();
+  updateSummary();
 }
 
 function renderCreditCardsPage() {
@@ -9959,6 +10433,73 @@ document.addEventListener('DOMContentLoaded', async () => {
       </button>
       <button class="btn-secondary" onclick="closeIncomeScopeModal()" style="width:100%;justify-content:center;margin-top:4px">Cancel</button>
     </div>
+  </div>
+</div>
+<!-- BOOKING MODAL -->
+<div class="modal-overlay" id="booking-modal-overlay" onclick="closeBookingModal(event)">
+  <div class="modal" style="max-width:400px">
+    <h2 id="booking-modal-title" style="font-family:var(--font-serif);font-size:1.4286em;margin-bottom:18px">Add Booking</h2>
+    <div class="form-field">
+      <label>Event / client name</label>
+      <input type="text" id="booking-name" placeholder="e.g. Birthday party — Torbay" onkeydown="if(event.key==='Enter')saveBooking()">
+    </div>
+    <div class="form-field">
+      <label>Amount ($)</label>
+      <input type="number" id="booking-amount" placeholder="0" min="0" onkeydown="if(event.key==='Enter')saveBooking()" style="font-size:1.3em;font-family:var(--font-serif)">
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-field" style="flex:1">
+        <label>Day of month</label>
+        <input type="number" id="booking-day" placeholder="—" min="1" max="31">
+      </div>
+      <div class="form-field" style="flex:1">
+        <label>Deposit ($)</label>
+        <input type="number" id="booking-deposit" placeholder="0" min="0">
+      </div>
+    </div>
+    <div class="form-field">
+      <label>Status</label>
+      <select id="booking-status" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
+        <option value="quoted">Quoted</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="paid">Paid</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="saveBooking()">Save</button>
+      <button class="btn-secondary" onclick="closeBookingModal()">Cancel</button>
+    </div>
+    <button id="booking-delete-btn" class="reset-btn" style="margin-top:8px;display:none" onclick="confirmDeleteBooking(_editingBookingId)">Delete booking</button>
+  </div>
+</div>
+<!-- BUSINESS EXPENSE MODAL -->
+<div class="modal-overlay" id="biz-expense-modal-overlay" onclick="closeBizExpenseModal(event)">
+  <div class="modal" style="max-width:400px">
+    <h2 id="biz-expense-modal-title" style="font-family:var(--font-serif);font-size:1.4286em;margin-bottom:18px">Add Expense</h2>
+    <div class="form-field">
+      <label>Expense name</label>
+      <input type="text" id="biz-expense-name" placeholder="e.g. Face paints restock" onkeydown="if(event.key==='Enter')saveBizExpense()">
+    </div>
+    <div class="form-field">
+      <label>Amount ($)</label>
+      <input type="number" id="biz-expense-amount" placeholder="0" min="0" onkeydown="if(event.key==='Enter')saveBizExpense()" style="font-size:1.3em;font-family:var(--font-serif)">
+    </div>
+    <div class="form-field">
+      <label>Category</label>
+      <select id="biz-expense-category" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
+    </div>
+    <div class="form-field">
+      <label>Frequency</label>
+      <select id="biz-expense-freq" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
+        <option value="monthly">Monthly (recurring)</option>
+        <option value="onetime">One-time (this month only)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="saveBizExpense()">Save</button>
+      <button class="btn-secondary" onclick="closeBizExpenseModal()">Cancel</button>
+    </div>
+    <button id="biz-expense-delete-btn" class="reset-btn" style="margin-top:8px;display:none" onclick="confirmDeleteBizExpense(_editingBizExpenseId)">Delete expense</button>
   </div>
 </div>
 <!-- ADD CREDIT CARD MODAL -->
