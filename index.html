@@ -7043,6 +7043,7 @@ function calPrevPeriod() {
   renderDebts();
   renderInvestments();
   renderBankAccounts();
+  if (document.getElementById('page-business') && document.getElementById('page-business').classList.contains('active')) renderBusiness();
 }
 function calNextPeriod() {
   calDrillDay = null;
@@ -7055,6 +7056,7 @@ function calNextPeriod() {
   renderDebts();
   renderInvestments();
   renderBankAccounts();
+  if (document.getElementById('page-business') && document.getElementById('page-business').classList.contains('active')) renderBusiness();
 }
 
 function getWeekStart(date) {
