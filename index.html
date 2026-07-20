@@ -1941,6 +1941,9 @@
     .summary-strip .stat-card .label { font-size: 0.62em; margin-bottom: 6px; }
     .summary-strip .stat-card .sub   { font-size: 0.7em; margin-top: 4px; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
+    .rogers-meters.biz-meters { grid-template-columns: 1fr 1fr 1fr !important; gap: 6px !important; }
+    .biz-meters .rm-value { font-size: 1.05em; }
+    .biz-meters .rm-label { font-size: 0.6em; }
     .page          { padding: 14px; }
     .top-bar       { padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
     .top-bar-title { font-size: 0.85em; }
@@ -2063,6 +2066,9 @@
     .summary-strip .stat-card .sub   { font-size: 0.7em; margin-top: 4px; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
+    .rogers-meters.biz-meters { grid-template-columns: 1fr 1fr 1fr !important; gap: 6px !important; }
+    .biz-meters .rm-value { font-size: 1.05em; }
+    .biz-meters .rm-label { font-size: 0.6em; }
     .page          { padding: 14px; }
     .top-bar       { padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
     .top-bar-title { font-size: 0.85em; }
@@ -8612,7 +8618,7 @@ function renderBusiness() {
 
   // Summary tile row: Revenue / Expenses / Net Profit
   let html = '';
-  html += '<div class="rogers-meters" style="grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:12px">' +
+  html += '<div class="rogers-meters biz-meters" style="grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:12px">' +
     '<div class="rogers-meter">' +
       '<div class="rm-label">Revenue</div>' +
       '<div class="rm-value green">' + fmt(revenue) + '</div>' +
@@ -8627,16 +8633,6 @@ function renderBusiness() {
       '<div class="rm-label">Net profit</div>' +
       '<div class="rm-value" style="color:' + (netProfit >= 0 ? 'var(--income-green)' : 'var(--expense-red)') + '">' + (netProfit >= 0 ? '+' : '-') + fmt(Math.abs(netProfit)) + '</div>' +
       '<div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">revenue − expenses</div>' +
-    '</div>' +
-  '</div>';
-
-  // Year-to-date profit tile (running, like Yearly Left Over)
-  html += '<div class="stat-card" style="border-color:rgba(62,255,163,0.3);margin-bottom:16px">' +
-    '<div class="label">YTD Net Profit &middot; ' + yr + '</div>' +
-    '<div class="value" style="color:' + (ytd.net >= 0 ? 'var(--income-green)' : 'var(--expense-red)') + '">' + (ytd.net >= 0 ? '+' : '-') + fmt(Math.abs(ytd.net)) + '</div>' +
-    '<div class="sub">' + fmt(ytd.revenue) + ' revenue &minus; ' + fmt(ytd.expenses) + ' expenses</div>' +
-    '<div style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px">' +
-      (ytd.months === 0 ? 'No activity yet this year' : 'across ' + ytd.months + ' month' + (ytd.months === 1 ? '' : 's') + ' \u00b7 avg ' + fmt(ytd.net / ytd.months) + '/mo') +
     '</div>' +
   '</div>';
 
@@ -8660,13 +8656,21 @@ function renderBusiness() {
       const depositTxt = (b.deposit && b.deposit > 0)
         ? '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-left:6px">deposit ' + fmt(b.deposit) + '</span>'
         : '';
+      // Paid-on note: only when paid AND the payment date differs from the event day
+      let paidTxt = '';
+      if (b.status === 'paid' && b.paidYr !== undefined && b.paidYr !== null && b.paidDay) {
+        const differentDay = !(b.paidYr === b.yr && b.paidMo === b.mo && b.paidDay === b.day);
+        if (differentDay) {
+          paidTxt = '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--income-green);margin-left:6px">received ' + MONTHS[b.paidMo] + ' ' + b.paidDay + getDaySuffix(b.paidDay) + '</span>';
+        }
+      }
       html +=
       '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
         '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
           '<div style="display:flex;align-items:center;gap:6px">' + (b.name || 'Untitled event') +
             '<span style="font-size:0.6429em;background:' + st.color + ';color:#111;border-radius:3px;padding:1px 5px">' + st.label + '</span>' +
           '</div>' +
-          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + dayTxt + depositTxt + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + dayTxt + depositTxt + paidTxt + '</div>' +
         '</div>' +
         '<div class="item-actions" style="opacity:1">' +
           '<button class="icon-btn" onclick="openBookingModal(\'' + b.id + '\')" title="Edit booking">' +
@@ -8775,10 +8779,33 @@ function buildBookingsCalendarHTML(yr, mo) {
   const isCurMo = today.getFullYear() === yr && today.getMonth() === mo;
   const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-  // Map day -> bookings on that day
+  // Map day -> occurrences on that day. A booking contributes:
+  //   • an "event" occurrence on its event day (b.day)
+  //   • a "payment" occurrence on its paid day, when status==='paid' and a paid date is set
+  // If the paid day equals the event day, they merge into one paid occurrence.
   const byDay = {};
+  const addOcc = (day, occ) => { if (day) (byDay[day] = byDay[day] || []).push(occ); };
   getBusinessBookingsForMonth(yr, mo).forEach(b => {
-    if (b.day) { (byDay[b.day] = byDay[b.day] || []).push(b); }
+    const paidInThisMonth = b.status === 'paid' && b.paidYr === yr && b.paidMo === mo && b.paidDay;
+    const sameDay = paidInThisMonth && b.paidDay === b.day;
+    if (sameDay) {
+      // Single cell: paid on the event day
+      addOcc(b.day, { booking: b, kind: 'paid' });
+    } else {
+      // Event-day occurrence (the gig itself). If paid but on a different day,
+      // the event cell shows it as "confirmed" (work done / scheduled, money came later).
+      if (b.day) addOcc(b.day, { booking: b, kind: 'event', displayStatus: (b.status === 'paid' ? 'confirmed' : (b.status || 'quoted')) });
+      // Payment-day occurrence (money received)
+      if (paidInThisMonth) addOcc(b.paidDay, { booking: b, kind: 'paid' });
+    }
+  });
+  // Also handle bookings whose EVENT is in another month but were PAID this month
+  businessBookings.forEach(b => {
+    if (b.status !== 'paid' || !b.paidDay) return;
+    if (b.paidYr !== yr || b.paidMo !== mo) return;
+    const eventInThisMonth = b.yr === yr && b.mo === mo;
+    if (eventInThisMonth) return; // already handled above
+    addOcc(b.paidDay, { booking: b, kind: 'paid', crossMonth: true });
   });
 
   let out = '<div class="section" style="margin-bottom:16px"><div class="section-header" style="cursor:default">' +
@@ -8791,24 +8818,65 @@ function buildBookingsCalendarHTML(yr, mo) {
   for (let i = 0; i < firstDay; i++) out += '<div class="cal-cell cal-empty"></div>';
 
   for (let d = 1; d <= dim; d++) {
-    const dayBookings = byDay[d] || [];
-    const has = dayBookings.length > 0;
-    const dayTotal = dayBookings.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+    const occs = byDay[d] || [];
+    const has = occs.length > 0;
+    // Sum amounts: payment occurrences count the booking amount (money in that day);
+    // event occurrences also show the booking amount (value of the gig).
+    const dayTotal = occs.reduce((s, o) => s + (parseFloat(o.booking.amount) || 0), 0);
     const isToday = isCurMo && d === today.getDate();
     let cellClass = 'cal-cell';
     if (isToday) cellClass += ' cal-today';
     if (has) cellClass += ' cal-has-income';
-    // Clicking: if the day has bookings, open the first one; else add a new booking on this day
+
+    const STATUS_COLOR = {
+      paid:      'var(--income-green)',
+      confirmed: 'var(--accent2)',
+      quoted:    'var(--muted)',
+    };
+    const RANK = { quoted: 0, confirmed: 1, paid: 2 };
+
+    // Effective status per occurrence: payment occ = 'paid'; event occ = its displayStatus
+    const occStatus = (o) => o.kind === 'paid' ? 'paid' : (o.displayStatus || o.booking.status || 'quoted');
+
+    // Click: open the first occurrence's booking; empty day → add new booking on this day
     const onclick = has
-      ? "openBookingModal('" + dayBookings[0].id + "')"
+      ? "openBookingModal('" + occs[0].booking.id + "')"
       : "openBookingModalOnDay(" + d + ")";
+
+    let topStatus = 'quoted';
+    let paidMarker = '';
+    if (has) {
+      let hasPayment = false;
+      occs.forEach(o => {
+        const s = occStatus(o);
+        if (RANK[s] > RANK[topStatus]) topStatus = s;
+        if (o.kind === 'paid') hasPayment = true;
+      });
+      // Mark a day where money was actually received
+      if (hasPayment) {
+        paidMarker = '<div style="position:absolute;bottom:2px;right:3px;font-size:0.5em;color:var(--income-green);font-family:var(--font-mono);line-height:1">received</div>';
+      }
+    }
+    const amtColor = STATUS_COLOR[topStatus] || 'var(--income-green)';
+    const amtStyle = topStatus === 'quoted'
+      ? 'color:' + amtColor + ';font-style:italic;opacity:0.75'
+      : (topStatus === 'confirmed' ? 'color:' + amtColor : 'color:' + amtColor + ';font-weight:600');
+
     out += '<div class="' + cellClass + '" style="position:relative" onclick="' + onclick + '">' +
       '<div class="cal-day">' + d + '</div>' +
-      (has ? '<div class="cal-entry-income">' + fmtMoney(dayTotal) + '</div>' : '') +
-      (dayBookings.length > 1 ? '<div class="cal-override-badge">' + dayBookings.length + '</div>' : '') +
+      (has ? '<div class="cal-entry-income" style="' + amtStyle + '">' + fmtMoney(dayTotal) + '</div>' : '') +
+      paidMarker +
+      (occs.length > 1 ? '<div class="cal-override-badge" style="left:3px;right:auto">' + occs.length + '</div>' : '') +
       '</div>';
   }
-  out += '</div></div></div>';
+  out += '</div>'; // close cal-grid
+  // Status legend
+  out += '<div style="display:flex;gap:14px;justify-content:center;padding:10px 12px 4px;font-family:var(--font-mono);font-size:0.68em;color:var(--muted);flex-wrap:wrap">' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--muted)"></span>Quoted</span>' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent2)"></span>Confirmed</span>' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--income-green)"></span>Paid</span>' +
+    '</div>';
+  out += '</div></div>'; // close section-body, section
   return out;
 }
 
@@ -8817,6 +8885,81 @@ function openBookingModalOnDay(day) {
   openBookingModal(null);
   const dayEl = document.getElementById('booking-day');
   if (dayEl) dayEl.value = day;
+}
+
+// ── Linking business records ↔ personal Money In / Money Out ──
+// Each linked personal entry carries a `businessLink` = the business record's id.
+// We create/update/remove the personal entry to mirror the business one.
+
+// Sync a booking → personal Money In. Only present when status==='paid' AND addToPersonal.
+// Uses the paid date (paidYr/paidMo/paidDay) for the personal entry.
+function syncBookingToPersonal(b) {
+  // Remove any existing linked income first
+  removeLinkedIncome(b.id);
+  if (!b || !b.addToPersonal || b.status !== 'paid') return;
+  const yr = (b.paidYr !== undefined && b.paidYr !== null) ? b.paidYr : b.yr;
+  const mo = (b.paidMo !== undefined && b.paidMo !== null) ? b.paidMo : b.mo;
+  const day = (b.paidDay !== undefined && b.paidDay !== null) ? b.paidDay : (b.day || 1);
+  const amount = parseFloat(b.amount) || 0;
+  if (amount === 0) return;
+  const id = 'bizlink_inc_' + b.id;
+  budget.income.push({
+    id, name: b.name || 'Business booking', freq: 'monthly', amount: 0,
+    anchorDate: null, payDay: day, payDay2: null,
+    oneTime: true, oneTimeYr: yr, oneTimeMo: mo, businessLink: b.id,
+  });
+  incomeAmounts[id] = 0;
+  setActualPay(yr, mo, id, 0, amount);
+}
+
+function removeLinkedIncome(bookingId) {
+  const id = 'bizlink_inc_' + bookingId;
+  const idx = budget.income.findIndex(i => i.id === id || i.businessLink === bookingId);
+  if (idx !== -1) {
+    const realId = budget.income[idx].id;
+    budget.income.splice(idx, 1);
+    delete incomeAmounts[realId];
+    // Clear any stamped actuals for this linked id
+    Object.keys(incomeActuals).forEach(k => { if (k.endsWith('-' + realId + '-0')) delete incomeActuals[k]; });
+  }
+}
+
+// Sync a business expense → personal Money Out. Present only when addToPersonal is set.
+function syncBizExpenseToPersonal(e) {
+  removeLinkedExpense(e.id);
+  if (!e || !e.addToPersonal) return;
+  const amount = parseFloat(e.amount) || 0;
+  if (amount === 0) return;
+  const yr = e.yr !== undefined ? e.yr : calYear;
+  const mo = e.mo !== undefined ? e.mo : calMonth;
+  const day = e.day || 1;
+  const id = 'bizlink_exp_' + e.id;
+  if (e.oneTime) {
+    budget.expenses.push({
+      id, name: e.name || 'Business expense', amount: 0, due: String(day),
+      category: 'Business', source: 'chequing',
+      startYr: yr, startMo: mo, endYr: yr, endMo: mo, businessLink: e.id,
+    });
+    expenseAmounts[id] = 0;
+    setExpenseFieldsFromMonth(id, { amount, due: String(day), category: 'Business', source: 'chequing', manual: false }, yr, mo);
+  } else {
+    budget.expenses.push({
+      id, name: e.name || 'Business expense', amount, due: String(day),
+      category: 'Business', source: 'chequing', startYr: yr, startMo: mo, businessLink: e.id,
+    });
+    expenseAmounts[id] = amount;
+  }
+}
+
+function removeLinkedExpense(expenseId) {
+  const id = 'bizlink_exp_' + expenseId;
+  const idx = budget.expenses.findIndex(x => x.id === id || x.businessLink === expenseId);
+  if (idx !== -1) {
+    const realId = budget.expenses[idx].id;
+    budget.expenses.splice(idx, 1);
+    delete expenseAmounts[realId];
+    Object.keys(incomeActuals).forEach(k => {}); // no-op, expenses use expenseHistory
+  }
 }
 
 // Build a month-by-month yearly breakdown (Jan → current month) of revenue, expenses, profit.
@@ -8876,6 +9019,18 @@ function openBookingModal(id) {
   document.getElementById('booking-day').value     = b ? (b.day || '') : '';
   document.getElementById('booking-deposit').value = b ? (b.deposit || '') : '';
   document.getElementById('booking-status').value  = b ? (b.status || 'quoted') : 'quoted';
+  document.getElementById('booking-add-personal').checked = b ? !!b.addToPersonal : false;
+  // Paid date: use stored, else today
+  const paidDateEl = document.getElementById('booking-paid-date');
+  if (paidDateEl) {
+    if (b && b.paidYr !== undefined && b.paidYr !== null) {
+      paidDateEl.value = b.paidYr + '-' + String(b.paidMo + 1).padStart(2, '0') + '-' + String(b.paidDay).padStart(2, '0');
+    } else {
+      const t = new Date();
+      paidDateEl.value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    }
+  }
+  onBookingStatusChange();
   if (titleEl) titleEl.textContent = (b ? 'Edit Booking' : 'Add Booking') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
   const delBtn = document.getElementById('booking-delete-btn');
   if (delBtn) delBtn.style.display = b ? 'block' : 'none';
@@ -8891,24 +9046,55 @@ function closeBookingModal(e) {
   _editingBookingId = null;
 }
 
+// Show paid-date + "add to Money In" fields only when status is Paid
+function onBookingStatusChange() {
+  const status = document.getElementById('booking-status').value;
+  const isPaid = status === 'paid';
+  const pdField = document.getElementById('booking-paid-date-field');
+  const apRow   = document.getElementById('booking-add-personal-row');
+  if (pdField) pdField.style.display = isPaid ? '' : 'none';
+  if (apRow)   apRow.style.display   = isPaid ? '' : 'none';
+}
+
 function saveBooking() {
   const name    = document.getElementById('booking-name').value.trim();
   const amount  = parseFloat(document.getElementById('booking-amount').value) || 0;
   const day     = parseInt(document.getElementById('booking-day').value) || null;
   const deposit = parseFloat(document.getElementById('booking-deposit').value) || 0;
   const status  = document.getElementById('booking-status').value || 'quoted';
+  const addToPersonal = document.getElementById('booking-add-personal').checked;
   if (!name && amount === 0) { closeBookingModal(); return; }
 
-  pushUndo();
-  if (_editingBookingId) {
-    const b = businessBookings.find(x => x.id === _editingBookingId);
-    if (b) { b.name = name; b.amount = amount; b.day = day; b.deposit = deposit; b.status = status; }
-  } else {
-    businessBookings.push({
-      id: newBusinessId('bk'), yr: calYear, mo: calMonth,
-      day, name, amount, deposit, status,
-    });
+  // Parse paid date (only relevant when paid)
+  let paidYr = null, paidMo = null, paidDay = null;
+  if (status === 'paid') {
+    const pd = document.getElementById('booking-paid-date').value;
+    if (pd) {
+      const parts = pd.split('-');
+      paidYr = parseInt(parts[0]); paidMo = parseInt(parts[1]) - 1; paidDay = parseInt(parts[2]);
+    }
   }
+
+  pushUndo();
+  let target;
+  if (_editingBookingId) {
+    target = businessBookings.find(x => x.id === _editingBookingId);
+    if (target) {
+      target.name = name; target.amount = amount; target.day = day;
+      target.deposit = deposit; target.status = status; target.addToPersonal = addToPersonal;
+      target.paidYr = paidYr; target.paidMo = paidMo; target.paidDay = paidDay;
+    }
+  } else {
+    target = {
+      id: newBusinessId('bk'), yr: calYear, mo: calMonth,
+      day, name, amount, deposit, status, addToPersonal,
+      paidYr, paidMo, paidDay,
+    };
+    businessBookings.push(target);
+  }
+  // Sync (or remove) the linked personal income entry
+  if (target) syncBookingToPersonal(target);
+
   _editingBookingId = null;
   const overlay = document.getElementById('booking-modal-overlay');
   if (overlay) overlay.classList.remove('open');
@@ -8922,6 +9108,7 @@ function confirmDeleteBooking(id) {
   const label = b ? (b.name || 'this booking') : 'this booking';
   if (!confirm('Delete "' + label + '"?')) return;
   pushUndo();
+  removeLinkedIncome(id);
   const idx = businessBookings.findIndex(x => x.id === id);
   if (idx !== -1) businessBookings.splice(idx, 1);
   const overlay = document.getElementById('booking-modal-overlay');
@@ -8953,6 +9140,9 @@ function openBizExpenseModal(id) {
   // Frequency radio: monthly (recurring) vs one-time
   const isOneTime = e ? !!e.oneTime : false;
   document.getElementById('biz-expense-freq').value = isOneTime ? 'onetime' : 'monthly';
+  document.getElementById('biz-expense-add-personal').checked = e ? !!e.addToPersonal : false;
+  document.getElementById('biz-expense-day').value = e ? (e.day || '') : '';
+  onBizExpensePersonalToggle();
   if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
   const delBtn = document.getElementById('biz-expense-delete-btn');
   if (delBtn) delBtn.style.display = e ? 'block' : 'none';
@@ -8968,32 +9158,46 @@ function closeBizExpenseModal(e) {
   _editingBizExpenseId = null;
 }
 
+// Show the day field only when "Add to Money Out" is on
+function onBizExpensePersonalToggle() {
+  const on = document.getElementById('biz-expense-add-personal').checked;
+  const dayField = document.getElementById('biz-expense-day-field');
+  if (dayField) dayField.style.display = on ? '' : 'none';
+}
+
 function saveBizExpense() {
   const name     = document.getElementById('biz-expense-name').value.trim();
   const amount   = parseFloat(document.getElementById('biz-expense-amount').value) || 0;
   const category = document.getElementById('biz-expense-category').value || 'Other';
   const oneTime  = document.getElementById('biz-expense-freq').value === 'onetime';
+  const addToPersonal = document.getElementById('biz-expense-add-personal').checked;
+  const day      = parseInt(document.getElementById('biz-expense-day').value) || null;
   if (!name && amount === 0) { closeBizExpenseModal(); return; }
 
   pushUndo();
+  let target;
   if (_editingBizExpenseId) {
-    const e = businessExpenses.find(x => x.id === _editingBizExpenseId);
-    if (e) {
-      e.name = name; e.amount = amount; e.category = category; e.oneTime = oneTime;
-      // Keep the item's start month; recurring items use yr/mo as their start.
-      if (e.yr === undefined) { e.yr = calYear; e.mo = calMonth; }
+    target = businessExpenses.find(x => x.id === _editingBizExpenseId);
+    if (target) {
+      target.name = name; target.amount = amount; target.category = category;
+      target.oneTime = oneTime; target.addToPersonal = addToPersonal; target.day = day;
+      if (target.yr === undefined) { target.yr = calYear; target.mo = calMonth; }
     }
   } else {
-    businessExpenses.push({
+    target = {
       id: newBusinessId('be'), name, amount, category, oneTime,
-      yr: calYear, mo: calMonth,
-    });
+      addToPersonal, day, yr: calYear, mo: calMonth,
+    };
+    businessExpenses.push(target);
   }
+  if (target) syncBizExpenseToPersonal(target);
+
   _editingBizExpenseId = null;
   const overlay = document.getElementById('biz-expense-modal-overlay');
   if (overlay) overlay.classList.remove('open');
   renderBusiness();
   updateSummary();
+  renderCalendar();
 }
 
 function confirmDeleteBizExpense(id) {
@@ -9001,6 +9205,7 @@ function confirmDeleteBizExpense(id) {
   const label = e ? (e.name || 'this expense') : 'this expense';
   if (!confirm('Delete "' + label + '"?')) return;
   pushUndo();
+  removeLinkedExpense(id);
   const idx = businessExpenses.findIndex(x => x.id === id);
   if (idx !== -1) businessExpenses.splice(idx, 1);
   delete businessExpenseSchedule[id];
@@ -9008,6 +9213,7 @@ function confirmDeleteBizExpense(id) {
   if (overlay) overlay.classList.remove('open');
   renderBusiness();
   updateSummary();
+  renderCalendar();
 }
 
 function renderCreditCardsPage() {
@@ -10574,11 +10780,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
     <div class="form-field">
       <label>Status</label>
-      <select id="booking-status" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
+      <select id="booking-status" onchange="onBookingStatusChange()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
         <option value="quoted">Quoted</option>
         <option value="confirmed">Confirmed</option>
         <option value="paid">Paid</option>
       </select>
+    </div>
+    <div class="form-field" id="booking-paid-date-field" style="display:none">
+      <label>Paid date</label>
+      <input type="date" id="booking-paid-date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px">
+    </div>
+    <div class="setting-row" id="booking-add-personal-row" style="display:none;padding:10px 0;border:none">
+      <div style="flex:1">
+        <div class="setting-label" style="font-size:0.92em">Add to Money In when paid</div>
+        <div class="setting-sub">Creates a linked income entry on the paid date</div>
+      </div>
+      <label class="toggle" style="flex-shrink:0">
+        <input type="checkbox" id="booking-add-personal">
+        <div class="toggle-track"></div>
+      </label>
     </div>
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveBooking()">Save</button>
@@ -10609,6 +10829,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         <option value="monthly">Monthly (recurring)</option>
         <option value="onetime">One-time (this month only)</option>
       </select>
+    </div>
+    <div class="setting-row" id="biz-expense-add-personal-row" style="padding:10px 0;border:none">
+      <div style="flex:1">
+        <div class="setting-label" style="font-size:0.92em">Add to Money Out</div>
+        <div class="setting-sub">Leave off for credit-card expenses</div>
+      </div>
+      <label class="toggle" style="flex-shrink:0">
+        <input type="checkbox" id="biz-expense-add-personal" onchange="onBizExpensePersonalToggle()">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="form-field" id="biz-expense-day-field" style="display:none">
+      <label>Day of month (for Money Out)</label>
+      <input type="number" id="biz-expense-day" placeholder="1" min="1" max="31">
     </div>
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveBizExpense()">Save</button>
