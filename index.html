@@ -8656,7 +8656,7 @@ function renderBusiness() {
   // Bookings section
   html += '<div class="section" id="business-bookings-section">' +
     '<div class="section-header" style="cursor:default">' +
-      '<div class="section-title"><div class="section-dot" style="background:var(--income-green)"></div>Bookings</div>' +
+      '<div class="section-title"><div class="section-dot" style="background:var(--income-green)"></div>Revenue</div>' +
       '<div class="section-total" style="color:var(--income-green)">' + fmt(revenue) + '</div>' +
     '</div>' +
     '<div class="section-body is-open" style="max-height:none">';
@@ -8867,15 +8867,20 @@ function buildBookingsCalendarHTML(yr, mo) {
     let topStatus = 'quoted';
     let paidMarker = '';
     if (has) {
-      let hasPayment = false;
+      let paymentOcc = null;
       occs.forEach(o => {
         const s = occStatus(o);
         if (RANK[s] > RANK[topStatus]) topStatus = s;
-        if (o.kind === 'paid') hasPayment = true;
+        if (o.kind === 'paid') paymentOcc = o;
       });
-      // Mark a day where money was actually received
-      if (hasPayment) {
-        paidMarker = '<div style="position:absolute;bottom:2px;right:3px;font-size:0.5em;color:var(--income-green);font-family:var(--font-mono);line-height:1">received</div>';
+      // On a payment-day cell where the event was a different day, show the event date
+      // so it's clear what the payment was for.
+      if (paymentOcc) {
+        const pb = paymentOcc.booking;
+        const differentDay = !(pb.paidYr === pb.yr && pb.paidMo === pb.mo && pb.paidDay === pb.day);
+        if (differentDay && pb.day) {
+          paidMarker = '<div style="position:absolute;bottom:2px;right:3px;font-size:0.5em;color:var(--muted);font-family:var(--font-mono);line-height:1">for ' + MONTHS[pb.mo] + ' ' + pb.day + '</div>';
+        }
       }
     }
     const amtColor = STATUS_COLOR[topStatus] || 'var(--income-green)';
