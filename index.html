@@ -8668,21 +8668,21 @@ function renderBusiness() {
       const st = BOOKING_STATUS[b.status] || BOOKING_STATUS.quoted;
       const dayTxt = b.day ? (MONTHS[mo] + ' ' + b.day + getDaySuffix(b.day)) : 'Date TBD';
       const depositTxt = (b.deposit && b.deposit > 0)
-        ? '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-left:6px">deposit ' + fmt(b.deposit) + '</span>'
+        ? '<span style="font-family:var(--font-mono);font-size:0.9em;color:var(--muted);margin-left:6px">deposit ' + fmt(b.deposit) + '</span>'
         : '';
       // Paid-on note: only when paid AND the payment date differs from the event day
       let paidTxt = '';
       if (b.status === 'paid' && b.paidYr !== undefined && b.paidYr !== null && b.paidDay) {
         const differentDay = !(b.paidYr === b.yr && b.paidMo === b.mo && b.paidDay === b.day);
         if (differentDay) {
-          paidTxt = '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--income-green);margin-left:6px">received ' + MONTHS[b.paidMo] + ' ' + b.paidDay + getDaySuffix(b.paidDay) + '</span>';
+          paidTxt = '<span style="font-family:var(--font-mono);font-size:0.9em;color:var(--income-green);margin-left:6px">received ' + MONTHS[b.paidMo] + ' ' + b.paidDay + getDaySuffix(b.paidDay) + '</span>';
         }
       }
       const tipTxt = (b.tip && b.tip > 0)
-        ? '<span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--income-green);margin-left:6px">+' + fmt(b.tip) + ' tip</span>'
+        ? '<span style="font-family:var(--font-mono);font-size:0.9em;color:var(--income-green);margin-left:6px">+' + fmt(b.tip) + ' tip</span>'
         : '';
       const descHtml = (b.description && b.description.trim())
-        ? '<div style="font-size:0.78em;color:var(--muted);margin-top:2px;white-space:pre-wrap">' + escapeHtml(b.description) + '</div>'
+        ? '<div style="font-size:0.95em;color:var(--muted);margin-top:3px;white-space:pre-wrap">' + escapeHtml(b.description) + '</div>'
         : '';
       html +=
       '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
@@ -8691,7 +8691,7 @@ function renderBusiness() {
             '<span style="font-size:0.6429em;background:' + st.color + ';color:#111;border-radius:3px;padding:1px 5px">' + st.label + '</span>' +
           '</div>' +
           descHtml +
-          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + dayTxt + depositTxt + tipTxt + paidTxt + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.9em;color:var(--muted)">' + dayTxt + depositTxt + tipTxt + paidTxt + '</div>' +
         '</div>' +
         '<div class="item-actions" style="opacity:1">' +
           '<button class="icon-btn" onclick="openBookingModal(\'' + b.id + '\')" title="Edit booking">' +
