@@ -8866,6 +8866,11 @@ function buildBookingsCalendarHTML(yr, mo) {
 
     let topStatus = 'quoted';
     let paidMarker = '';
+    // Determine what the cell's main content should be: dollar amount, or a gig name.
+    // Rule: if this cell's occurrences are all EVENT occurrences for gigs that were paid
+    // on a DIFFERENT day, show the gig name(s) instead of dollars (the money shows on the
+    // payment day, so repeating the amount here would read as double income).
+    let cellContent = '';
     if (has) {
       let paymentOcc = null;
       occs.forEach(o => {
@@ -8873,8 +8878,7 @@ function buildBookingsCalendarHTML(yr, mo) {
         if (RANK[s] > RANK[topStatus]) topStatus = s;
         if (o.kind === 'paid') paymentOcc = o;
       });
-      // On a payment-day cell where the event was a different day, show the event date
-      // so it's clear what the payment was for.
+      // On a payment-day cell where the event was a different day, show the event date.
       if (paymentOcc) {
         const pb = paymentOcc.booking;
         const differentDay = !(pb.paidYr === pb.yr && pb.paidMo === pb.mo && pb.paidDay === pb.day);
@@ -8882,15 +8886,40 @@ function buildBookingsCalendarHTML(yr, mo) {
           paidMarker = '<div style="position:absolute;bottom:2px;right:3px;font-size:0.5em;color:var(--muted);font-family:var(--font-mono);line-height:1">for ' + MONTHS[pb.mo] + ' ' + pb.day + '</div>';
         }
       }
+
+      // Split occurrences into money-bearing (payment, or event-not-yet-paid-elsewhere)
+      // vs name-only (event for a gig already paid on another day)
+      const nameOnly = [];
+      let moneyTotal = 0;
+      let hasMoney = false;
+      occs.forEach(o => {
+        if (o.kind === 'paid') { moneyTotal += (parseFloat(o.booking.amount) || 0); hasMoney = true; return; }
+        // event occurrence
+        const b = o.booking;
+        const paidElsewhere = b.status === 'paid' &&
+          !(b.paidYr === b.yr && b.paidMo === b.mo && b.paidDay === b.day) &&
+          b.paidYr !== undefined && b.paidYr !== null;
+        if (paidElsewhere) { nameOnly.push(b); }
+        else { moneyTotal += (parseFloat(b.amount) || 0); hasMoney = true; }
+      });
+
+      const amtColor = STATUS_COLOR[topStatus] || 'var(--income-green)';
+      const amtStyle = topStatus === 'quoted'
+        ? 'color:' + amtColor + ';font-style:italic;opacity:0.75'
+        : (topStatus === 'confirmed' ? 'color:' + amtColor : 'color:' + amtColor + ';font-weight:600');
+
+      if (hasMoney) {
+        cellContent += '<div class="cal-entry-income" style="' + amtStyle + '">' + fmtMoney(moneyTotal) + '</div>';
+      }
+      // Gig names for paid-elsewhere events (confirmed-blue text, truncated)
+      nameOnly.forEach(b => {
+        cellContent += '<div style="font-size:0.5em;color:var(--accent2);line-height:1.1;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">' + escapeHtml(b.name || 'Gig') + '</div>';
+      });
     }
-    const amtColor = STATUS_COLOR[topStatus] || 'var(--income-green)';
-    const amtStyle = topStatus === 'quoted'
-      ? 'color:' + amtColor + ';font-style:italic;opacity:0.75'
-      : (topStatus === 'confirmed' ? 'color:' + amtColor : 'color:' + amtColor + ';font-weight:600');
 
     out += '<div class="' + cellClass + '" style="position:relative" onclick="' + onclick + '">' +
       '<div class="cal-day">' + d + '</div>' +
-      (has ? '<div class="cal-entry-income" style="' + amtStyle + '">' + fmtMoney(dayTotal) + '</div>' : '') +
+      cellContent +
       paidMarker +
       (occs.length > 1 ? '<div class="cal-override-badge" style="left:3px;right:auto">' + occs.length + '</div>' : '') +
       '</div>';
