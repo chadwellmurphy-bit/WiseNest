@@ -8735,7 +8735,7 @@ function renderBusiness() {
       '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
         '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
           '<div style="display:flex;align-items:center;gap:2px">' + (e.name || 'Untitled') + freqTag + '</div>' +
-          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + (e.category || 'Other') + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + (e.category || 'Other') + (e.day ? ' \u00b7 ' + MONTHS[mo] + ' ' + e.day + getDaySuffix(e.day) : '') + '</div>' +
         '</div>' +
         '<div class="item-actions" style="opacity:1">' +
           '<button class="icon-btn" onclick="openBizExpenseModal(\'' + e.id + '\')" title="Edit expense">' +
@@ -9204,7 +9204,6 @@ function openBizExpenseModal(id) {
   document.getElementById('biz-expense-freq').value = isOneTime ? 'onetime' : 'monthly';
   document.getElementById('biz-expense-add-personal').checked = e ? !!e.addToPersonal : false;
   document.getElementById('biz-expense-day').value = e ? (e.day || '') : '';
-  onBizExpensePersonalToggle();
   if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
   const delBtn = document.getElementById('biz-expense-delete-btn');
   if (delBtn) delBtn.style.display = e ? 'block' : 'none';
@@ -9221,11 +9220,7 @@ function closeBizExpenseModal(e) {
 }
 
 // Show the day field only when "Add to Money Out" is on
-function onBizExpensePersonalToggle() {
-  const on = document.getElementById('biz-expense-add-personal').checked;
-  const dayField = document.getElementById('biz-expense-day-field');
-  if (dayField) dayField.style.display = on ? '' : 'none';
-}
+function onBizExpensePersonalToggle() { /* day field is now always visible */ }
 
 function saveBizExpense() {
   const name     = document.getElementById('biz-expense-name').value.trim();
@@ -10896,6 +10891,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       <select id="biz-expense-category" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
     </div>
     <div class="form-field">
+      <label>Day of month <span style="color:var(--muted);font-weight:400">(when it occurs)</span></label>
+      <input type="number" id="biz-expense-day" placeholder="1" min="1" max="31">
+    </div>
+    <div class="form-field">
       <label>Frequency</label>
       <select id="biz-expense-freq" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
         <option value="monthly">Monthly (recurring)</option>
@@ -10908,13 +10907,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="setting-sub">Leave off for credit-card expenses</div>
       </div>
       <label class="toggle" style="flex-shrink:0">
-        <input type="checkbox" id="biz-expense-add-personal" onchange="onBizExpensePersonalToggle()">
+        <input type="checkbox" id="biz-expense-add-personal">
         <div class="toggle-track"></div>
       </label>
-    </div>
-    <div class="form-field" id="biz-expense-day-field" style="display:none">
-      <label>Day of month (for Money Out)</label>
-      <input type="number" id="biz-expense-day" placeholder="1" min="1" max="31">
     </div>
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveBizExpense()">Save</button>
