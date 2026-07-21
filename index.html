@@ -8735,7 +8735,7 @@ function renderBusiness() {
       '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
         '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
           '<div style="display:flex;align-items:center;gap:2px">' + (e.name || 'Untitled') + freqTag + '</div>' +
-          '<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">' + (e.category || 'Other') + (e.day ? ' \u00b7 ' + MONTHS[mo] + ' ' + e.day + getDaySuffix(e.day) : '') + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.9em;color:var(--muted)">' + (e.category || 'Other') + (e.day ? ' \u00b7 ' + MONTHS[mo] + ' ' + e.day + getDaySuffix(e.day) : '') + '</div>' +
         '</div>' +
         '<div class="item-actions" style="opacity:1">' +
           '<button class="icon-btn" onclick="openBizExpenseModal(\'' + e.id + '\')" title="Edit expense">' +
@@ -8989,18 +8989,19 @@ function syncBizExpenseToPersonal(e) {
   const mo = e.mo !== undefined ? e.mo : calMonth;
   const day = e.day || 1;
   const id = 'bizlink_exp_' + e.id;
+  const src = e.source || '';
   if (e.oneTime) {
     budget.expenses.push({
       id, name: e.name || 'Business expense', amount: 0, due: String(day),
-      category: 'Business', source: 'chequing',
+      category: 'Business', source: src,
       startYr: yr, startMo: mo, endYr: yr, endMo: mo, businessLink: e.id,
     });
     expenseAmounts[id] = 0;
-    setExpenseFieldsFromMonth(id, { amount, due: String(day), category: 'Business', source: 'chequing', manual: false }, yr, mo);
+    setExpenseFieldsFromMonth(id, { amount, due: String(day), category: 'Business', source: src, manual: false }, yr, mo);
   } else {
     budget.expenses.push({
       id, name: e.name || 'Business expense', amount, due: String(day),
-      category: 'Business', source: 'chequing', startYr: yr, startMo: mo, businessLink: e.id,
+      category: 'Business', source: src, startYr: yr, startMo: mo, businessLink: e.id,
     });
     expenseAmounts[id] = amount;
   }
@@ -9204,6 +9205,8 @@ function openBizExpenseModal(id) {
   document.getElementById('biz-expense-freq').value = isOneTime ? 'onetime' : 'monthly';
   document.getElementById('biz-expense-add-personal').checked = e ? !!e.addToPersonal : false;
   document.getElementById('biz-expense-day').value = e ? (e.day || '') : '';
+  populateBizExpenseSources(e ? (e.source || '') : '');
+  onBizExpensePersonalToggle();
   if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
   const delBtn = document.getElementById('biz-expense-delete-btn');
   if (delBtn) delBtn.style.display = e ? 'block' : 'none';
@@ -9219,8 +9222,27 @@ function closeBizExpenseModal(e) {
   _editingBizExpenseId = null;
 }
 
-// Show the day field only when "Add to Money Out" is on
-function onBizExpensePersonalToggle() { /* day field is now always visible */ }
+// Show the payment-source field only when "Add to Money Out" is on
+function onBizExpensePersonalToggle() {
+  const on = document.getElementById('biz-expense-add-personal').checked;
+  const srcField = document.getElementById('biz-expense-source-field');
+  if (srcField) srcField.style.display = on ? '' : 'none';
+}
+
+// Populate the payment-source dropdown from known LOGOS keys (banks/cards) + None
+function populateBizExpenseSources(selected) {
+  const sel = document.getElementById('biz-expense-source');
+  if (!sel) return;
+  const skip = { income: 1, expenses: 1 };
+  const keys = Object.keys(LOGOS).filter(k => !skip[k] && typeof LOGOS[k] === 'string');
+  const labelFor = (k) => ({ cibc: 'CIBC', eq: 'EQ Bank', rogers: 'Rogers' }[k] || (k.charAt(0).toUpperCase() + k.slice(1)));
+  let opts = '<option value="">None / cash</option>';
+  keys.forEach(k => {
+    opts += '<option value="' + k + '">' + labelFor(k) + '</option>';
+  });
+  sel.innerHTML = opts;
+  sel.value = selected || '';
+}
 
 function saveBizExpense() {
   const name     = document.getElementById('biz-expense-name').value.trim();
@@ -9229,6 +9251,7 @@ function saveBizExpense() {
   const oneTime  = document.getElementById('biz-expense-freq').value === 'onetime';
   const addToPersonal = document.getElementById('biz-expense-add-personal').checked;
   const day      = parseInt(document.getElementById('biz-expense-day').value) || null;
+  const source   = document.getElementById('biz-expense-source').value || '';
   if (!name && amount === 0) { closeBizExpenseModal(); return; }
 
   pushUndo();
@@ -9238,12 +9261,13 @@ function saveBizExpense() {
     if (target) {
       target.name = name; target.amount = amount; target.category = category;
       target.oneTime = oneTime; target.addToPersonal = addToPersonal; target.day = day;
+      target.source = source;
       if (target.yr === undefined) { target.yr = calYear; target.mo = calMonth; }
     }
   } else {
     target = {
       id: newBusinessId('be'), name, amount, category, oneTime,
-      addToPersonal, day, yr: calYear, mo: calMonth,
+      addToPersonal, day, source, yr: calYear, mo: calMonth,
     };
     businessExpenses.push(target);
   }
@@ -10907,9 +10931,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="setting-sub">Leave off for credit-card expenses</div>
       </div>
       <label class="toggle" style="flex-shrink:0">
-        <input type="checkbox" id="biz-expense-add-personal">
+        <input type="checkbox" id="biz-expense-add-personal" onchange="onBizExpensePersonalToggle()">
         <div class="toggle-track"></div>
       </label>
+    </div>
+    <div class="form-field" id="biz-expense-source-field" style="display:none">
+      <label>Payment source</label>
+      <select id="biz-expense-source" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
     </div>
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveBizExpense()">Save</button>
