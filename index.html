@@ -3564,9 +3564,39 @@ function escapeHtml(str) {
 }
 
 // ─── VERSION / BACKUP ────────────────────────────────────────────
-// Bump APP_VERSION whenever the app file is updated so you can confirm
-// at a glance (Settings → About) which build is loaded.
-const APP_VERSION = '2026.07.24';
+// Version is read automatically from the file's own Last-Modified date,
+// so it always reflects the build actually loaded — nothing to maintain by hand.
+let APP_VERSION = 'checking…';
+
+function detectAppVersion() {
+  const fmtStamp = (d) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) +
+           ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  };
+  const apply = (text) => {
+    APP_VERSION = text;
+    const el = document.getElementById('s-app-version');
+    if (el) el.textContent = text;
+  };
+  // document.lastModified works for local files and most servers
+  try {
+    const dl = new Date(document.lastModified);
+    if (!isNaN(dl.getTime()) && dl.getTime() > 0) apply(fmtStamp(dl));
+  } catch (e) {}
+  // For hosted files, a HEAD request gives the authoritative Last-Modified header
+  try {
+    fetch(location.href, { method: 'HEAD', cache: 'no-store' })
+      .then(r => {
+        const lm = r.headers.get('Last-Modified');
+        if (lm) {
+          const d = new Date(lm);
+          if (!isNaN(d.getTime())) apply(fmtStamp(d));
+        }
+      })
+      .catch(() => {});
+  } catch (e) {}
+}
 
 // Export all app data as a downloadable JSON file
 function exportDataFile() {
@@ -10139,6 +10169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateSummary();
   renderCalendar();
   applyBusinessVisibility();
+  detectAppVersion();
   syncUndoBtn();
 
   setTimeout(() => {
@@ -10813,7 +10844,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="setting-row">
               <div>
                 <div class="setting-label">Version</div>
-                <div class="setting-sub">Build this app was last updated</div>
+                <div class="setting-sub">When this app file was last updated</div>
               </div>
               <div id="s-app-version" style="font-family:var(--font-mono);font-size:0.8em;color:var(--muted);flex-shrink:0"></div>
             </div>
