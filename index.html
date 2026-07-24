@@ -3562,6 +3562,60 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+// ─── VERSION / BACKUP ────────────────────────────────────────────
+// Bump APP_VERSION whenever the app file is updated so you can confirm
+// at a glance (Settings → About) which build is loaded.
+const APP_VERSION = '2026.07.15';
+
+// Export all app data as a downloadable JSON file
+function exportDataFile() {
+  try {
+    const payload = buildSavePayload();
+    payload._exportedAt = new Date().toISOString();
+    payload._appVersion = APP_VERSION;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = 'wisenest-backup-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+
+// Import a previously exported JSON backup (replaces current data)
+function importDataFile(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || typeof data !== 'object') throw new Error('Not a valid backup file');
+      if (!confirm('Import this backup? It will replace all current data in the app.\n\nYour saved Gist is not changed until you press Save after reloading.')) {
+        input.value = '';
+        return;
+      }
+      // Write into the canonical local key and reload so the normal load path runs.
+      // This avoids duplicating the (large) state-hydration logic.
+      ['budget2026', 'budget-tracker', 'household-budget'].forEach(k => {
+        try { localStorage.setItem(k, JSON.stringify(data)); } catch (e) {}
+      });
+      alert('Backup imported. The app will now reload.\n\nPress Save afterward to write it to your Gist.');
+      location.reload();
+    } catch (e) {
+      alert('Import failed: ' + e.message);
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
 // BUSINESS_END
 
 // MORTGAGE_START
@@ -4582,7 +4636,7 @@ function renderIncome() {
     return `
     <div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">
       <div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">
-        <span>${item.name}</span>
+        <span>${item.name}${item.businessLink ? ' <span style="font-size:0.6429em;background:var(--accent2);color:#111;border-radius:3px;padding:1px 5px;margin-left:4px">business</span>' : ''}</span>
         <span style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted)">${freq} &middot; ${fmt(monthly)}/mo</span>
       </div>
       <div class="item-actions">
@@ -4766,6 +4820,7 @@ function renderExpenses() {
     <div class="line-item" style="grid-template-columns:${COLS};gap:8px;align-items:start">
       <div class="name" style="white-space:normal;word-break:break-word;align-items:flex-start;padding-top:2px;flex-wrap:wrap;gap:4px">
         <span>${item.name}</span>
+        ${item.businessLink ? '<span style="font-size:0.6429em;background:var(--accent2);color:#111;border-radius:3px;padding:1px 5px">business</span>' : ''}
         ${manual ? '<span class="manual-badge">✋</span>' : ''}
         ${soon ? '<span class="soon-badge">⏱</span>' : ''}
         </div>
@@ -8135,6 +8190,8 @@ function syncSettingsUI() {
   sel('s-business-name', appSettings.businessName || '');
   const bizNameRow = document.getElementById('s-business-name-row');
   if (bizNameRow) bizNameRow.style.display = appSettings.businessEnabled ? '' : 'none';
+  const verEl = document.getElementById('s-app-version');
+  if (verEl) verEl.textContent = APP_VERSION;
   buildBadgeToggles();
 }
 function applySettings() {
@@ -8477,7 +8534,7 @@ function buildOtherChargesRows(card, _actual, effectiveRecurring, cashBack) {
     : `${ocDueTxt ? `<span class="due-badge">${escHtml(ocDueTxt)}</span>` : ''}`;
 
   return `<div class="rogers-charge-row">
-    <div class="rc-name" style="display:flex;align-items:center;gap:6px">
+    <div class="rc-name" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <span>Other charges</span>
       <span id="oc-toggle-anchor-${card.id}" style="display:inline-flex;align-items:center">
         <label class="toggle-switch" style="margin:0" onclick="event.stopPropagation()" title="${autoAdd ? 'Synced to Money Out — click to disable' : 'Click to always add to Money Out'}">
@@ -8485,6 +8542,9 @@ function buildOtherChargesRows(card, _actual, effectiveRecurring, cashBack) {
           <span class="toggle-slider"></span>
         </label>
       </span>
+      <div style="flex-basis:100%;font-family:var(--font-mono);font-size:0.68em;color:var(--muted);margin-top:2px">
+        Your statement total minus the recurring charges above${autoAdd ? ' &middot; added to Money Out' : ''}
+      </div>
     </div>
     <div class="rc-due">${dueBadge}</div>
     <span class="rc-period">${ocDueDay ? ocPeriod : ''}</span>
@@ -8757,6 +8817,9 @@ function renderBusiness() {
   html += '</div></div>';
   html += '<div style="margin-top:8px"><button class="add-btn" onclick="openBizExpenseModal(null)" style="border-radius:8px">+ Add Expense</button></div>';
 
+  // Expenses grouped by tax category (month + YTD)
+  html += buildBizCategoryBreakdownHTML(yr, mo);
+
   // Yearly breakdown table (Jan → current month)
   html += buildBusinessYearTableHTML(yr, mo);
 
@@ -9021,6 +9084,58 @@ function removeLinkedExpense(expenseId) {
     delete expenseAmounts[realId];
     Object.keys(incomeActuals).forEach(k => {}); // no-op, expenses use expenseHistory
   }
+}
+
+// Build a month + YTD expense breakdown grouped by tax category.
+function buildBizCategoryBreakdownHTML(yr, mo) {
+  // Month totals per category
+  const monthTotals = {};
+  getBusinessExpensesForMonth(yr, mo).forEach(e => {
+    const cat = e.category || 'Other';
+    const amt = e.oneTime ? (parseFloat(e.amount) || 0) : getBusinessExpenseAmountForMonth(e, yr, mo);
+    monthTotals[cat] = (monthTotals[cat] || 0) + amt;
+  });
+  // Year-to-date totals per category (Jan → viewed month)
+  const ytdTotals = {};
+  for (let m = 0; m <= mo; m++) {
+    getBusinessExpensesForMonth(yr, m).forEach(e => {
+      const cat = e.category || 'Other';
+      const amt = e.oneTime ? (parseFloat(e.amount) || 0) : getBusinessExpenseAmountForMonth(e, yr, m);
+      ytdTotals[cat] = (ytdTotals[cat] || 0) + amt;
+    });
+  }
+  const cats = BUSINESS_CATEGORIES.filter(c => (monthTotals[c] || 0) > 0 || (ytdTotals[c] || 0) > 0);
+  if (cats.length === 0) return '';
+
+  let mSum = 0, ySum = 0;
+  let rows = '';
+  cats.forEach(c => {
+    const mv = monthTotals[c] || 0, yv = ytdTotals[c] || 0;
+    mSum += mv; ySum += yv;
+    rows +=
+      '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:0.78em">' +
+        '<div style="color:var(--text)">' + c + '</div>' +
+        '<div style="text-align:right;color:' + (mv > 0 ? 'var(--expense-red)' : 'var(--muted)') + '">' + fmt(mv) + '</div>' +
+        '<div style="text-align:right;color:' + (yv > 0 ? 'var(--expense-red)' : 'var(--muted)') + '">' + fmt(yv) + '</div>' +
+      '</div>';
+  });
+  const header =
+    '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:4px;padding:8px 12px;font-family:var(--font-mono);font-size:0.64em;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);border-bottom:1px solid var(--border)">' +
+      '<div>Category</div><div style="text-align:right">' + MONTHS[mo] + '</div><div style="text-align:right">YTD</div>' +
+    '</div>';
+  const totalRow =
+    '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:4px;padding:10px 12px;font-family:var(--font-mono);font-size:0.82em;font-weight:700;background:var(--surface2);border-radius:0 0 8px 8px">' +
+      '<div style="color:var(--text)">Total</div>' +
+      '<div style="text-align:right;color:var(--expense-red)">' + fmt(mSum) + '</div>' +
+      '<div style="text-align:right;color:var(--expense-red)">' + fmt(ySum) + '</div>' +
+    '</div>';
+
+  return '<div class="section" style="margin-top:16px"><div class="section-header" style="cursor:default">' +
+    '<div class="section-title"><div class="section-dot" style="background:var(--expense-red)"></div>Expenses by Category</div>' +
+    '<div class="section-total" style="font-family:var(--font-mono);font-size:0.7em;color:var(--muted)">for tax filing</div>' +
+    '</div><div class="section-body is-open" style="max-height:none;padding:0">' +
+    header + rows + totalRow +
+    '</div></div>';
 }
 
 // Build a month-by-month yearly breakdown (Jan → current month) of revenue, expenses, profit.
@@ -10676,9 +10791,31 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="settings-group">
             <div class="settings-group-label">Data</div>
             <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
+              <div class="setting-label">Backup</div>
+              <div class="setting-sub">Save a snapshot of all your data as a file, or restore one.</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onclick="exportDataFile()" style="background:var(--accent);color:#111;border:none;border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;cursor:pointer">Export backup</button>
+                <label style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;cursor:pointer;color:var(--text)">
+                  Import backup…
+                  <input type="file" accept="application/json,.json" style="display:none" onchange="importDataFile(this)">
+                </label>
+              </div>
+            </div>
+            <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
               <div class="setting-label">Reset to defaults</div>
               <div class="setting-sub">Clears all edits. Cannot be undone.</div>
               <button class="reset-btn" onclick="confirmReset()">Reset all data…</button>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">About</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Version</div>
+                <div class="setting-sub">Build this app was last updated</div>
+              </div>
+              <div id="s-app-version" style="font-family:var(--font-mono);font-size:0.8em;color:var(--muted);flex-shrink:0"></div>
             </div>
           </div>
 
