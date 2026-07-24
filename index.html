@@ -4076,7 +4076,12 @@ function monthlyActualIncomeForMonth(item, yr, mo) {
     if (yr < item.startYr || (yr === item.startYr && mo < item.startMo)) return 0;
   }
   const days = getIncomeDaysInMonth(item, yr, mo);
-  if (days.length === 0) return item.oneTime ? 0 : monthlyIncome(item); // fallback only for repeating
+  if (days.length === 0) {
+    // Fallback only for repeating items: use the month-effective rate
+    if (item.oneTime) return 0;
+    const perY = FREQ_PER_YEAR[item.freq] || 12;
+    return (getIncomeAmountForMonth(item.id, yr, mo) * perY) / 12;
+  }
   let total = 0;
   const monthRate = getIncomeAmountForMonth(item.id, yr, mo);
   days.forEach((d, idx) => {
@@ -7118,7 +7123,7 @@ function buildPaymentMap(yr, mo) {
     if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
     // Repeating items: skip months before they were created
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
-    const defaultAmt = getIncomeAmount(item.id);
+    const defaultAmt = getIncomeAmountForMonth(item.id, yr, mo);
     const days = getIncomeDaysInMonth(item, yr, mo);
     const effectiveDays = days.length > 0 ? days : [dim]; // fallback to end of month if no days configured
     effectiveDays.forEach((d, idx) => {
