@@ -2380,6 +2380,11 @@
         <svg id="yearly-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(-180deg)"><polyline points="4 6 8 10 12 6"></polyline></svg>
       </div>
       <div class="section-body is-open" id="yearly-body" style="max-height:none;padding:14px">
+        <div class="stat-card" id="networth-card" style="margin-bottom:14px;border-color:rgba(200,245,62,0.3)">
+          <div class="label">Net Worth</div>
+          <div class="value" id="networth-value" style="font-size:clamp(1.6em,6vw,2.4em)">$0</div>
+          <div class="sub" id="networth-sub">assets &minus; liabilities</div>
+        </div>
         <div class="summary-strip" style="margin:0">
 <div class="stat-card debt">
       <div class="label">Total Debt</div>
@@ -4331,6 +4336,16 @@ function renderDebts() {
   document.getElementById('debt-total-sidebar').textContent = fmt(totalDebt);
   document.getElementById('total-debt').textContent = fmt(totalDebt);
 
+  // Net worth = assets (accounts + investments) minus liabilities (debts + mortgage)
+  const nw = computeNetWorth(yr, mo);
+  const nwValEl = document.getElementById('networth-value');
+  const nwSubEl = document.getElementById('networth-sub');
+  if (nwValEl) {
+    nwValEl.textContent = (nw.net < 0 ? '-' : '') + fmt(Math.abs(nw.net));
+    nwValEl.style.color = nw.net >= 0 ? 'var(--income-green)' : 'var(--expense-red)';
+  }
+  if (nwSubEl) nwSubEl.textContent = fmt(nw.assets) + ' assets \u2212 ' + fmt(nw.liabilities) + ' owed';
+
   const prevMo = mo === 0 ? 11 : mo - 1;
   const prevYr = mo === 0 ? yr - 1 : yr;
   const prevMonthData = getDebtsForMonth(prevYr, prevMo);
@@ -4597,17 +4612,25 @@ function renderUpcomingBills() {
   if (sourceKeys.length === 1 && sourceKeys[0]) sourcePhrase = ' from ' + sourceLabel(sourceKeys[0]);
   else if (sourceKeys.length > 1) sourcePhrase = ' from ' + sourceKeys.length + ' sources';
 
-  // Current balance: only shown when all bills come from one bank account
+  // Current balance: shown when all bills come from one bank account.
+  // Bills may be keyed to an account ("acct:..") OR to a bank preset ("cibc").
+  // For a preset key, match it to an account of that same bank so we can still
+  // show a balance and a covered/short check.
   let balancePhrase = '';
   let coverLine = '';
-  if (sourceKeys.length === 1) {
-    const acct = accountForSource(sourceKeys[0]);
+  if (sourceKeys.length === 1 && sourceKeys[0]) {
+    const key = sourceKeys[0];
+    let acct = accountForSource(key);
+    if (!acct) {
+      const accts0 = getBankAccountsForMonth(calYear, calMonth);
+      acct = accts0.find(a => getBankPresetKey(a) === key) ||
+             accts0.find(a => (a.name || '').toLowerCase().indexOf(key) !== -1);
+    }
     if (acct) {
       const accts = getBankAccountsForMonth(calYear, calMonth);
-      const live = accts.find(a => a.id === acct.id);
-      const bal = live ? (live.balance || 0) : (acct.balance || 0);
+      const live = accts.find(a => a.id === acct.id) || acct;
+      const bal = live.balance || 0;
       balancePhrase = ', balance ' + fmt(bal);
-      // Does the balance cover the total due?
       const remaining = bal - total;
       if (remaining >= 0) {
         coverLine = '<span style="color:var(--income-green)">✓ Covered · ' + fmt(remaining) + ' left after</span>';
@@ -4647,6 +4670,22 @@ function renderUpcomingBills() {
 
   // Keep an open panel sized to its content after re-render
   if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
+}
+
+// Compute net worth for a month: assets (bank accounts + investments)
+// minus liabilities (debts + mortgage balance).
+function computeNetWorth(yr, mo) {
+  let assets = 0, liabilities = 0;
+  // Bank accounts
+  getBankAccountsForMonth(yr, mo).forEach(a => { assets += (a.balance || 0); });
+  // Investments
+  const invs = getInvestsForMonth(yr, mo);
+  (Array.isArray(invs) ? invs : []).forEach(i => { assets += (parseFloat(i.value) || 0); });
+  // Debts
+  getDebtsForMonth(yr, mo).forEach(dbt => { liabilities += (parseFloat(dbt.balance) || 0); });
+  // Mortgage
+  if (mortgageData && mortgageData.balance) liabilities += (parseFloat(mortgageData.balance) || 0);
+  return { assets, liabilities, net: assets - liabilities };
 }
 
 function updateSummary() {
