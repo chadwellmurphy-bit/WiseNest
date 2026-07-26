@@ -2283,16 +2283,15 @@
     </div>
     <!-- Upcoming payments (next 7 days) — collapsed summary, tap to expand -->
     <div class="section" id="upcoming-section" style="margin-top:16px;display:none">
-      <div class="section-header" style="cursor:pointer" onclick="toggleUpcoming()">
-        <div class="section-title" style="display:flex;align-items:center;gap:8px">
-          <div class="section-dot" style="background:var(--debt-amber)"></div>
-          <span>Upcoming Payments</span>
-          <span id="upcoming-window" style="font-family:var(--font-mono);font-size:0.62em;color:var(--muted);text-transform:none;letter-spacing:0"></span>
+      <div class="section-header" style="cursor:pointer;align-items:flex-start" onclick="toggleUpcoming()">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+          <div class="section-title" style="display:flex;align-items:center;gap:8px">
+            <div class="section-dot" style="background:var(--debt-amber)"></div>
+            <span>Upcoming Payments</span>
+          </div>
+          <span id="upcoming-window" style="font-size:0.9em;color:var(--text);line-height:1.35;padding-left:16px"></span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="section-total" id="upcoming-total" style="color:var(--debt-amber)">$0</div>
-          <svg id="upcoming-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><polyline points="4 6 8 10 12 6"></polyline></svg>
-        </div>
+        <svg id="upcoming-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;flex-shrink:0;margin-top:4px"><polyline points="4 6 8 10 12 6"></polyline></svg>
       </div>
       <div class="section-body" id="upcoming-body" style="max-height:0;overflow:hidden"></div>
     </div>
@@ -4589,7 +4588,31 @@ function renderUpcomingBills() {
   if (minOffset === 0)      windowText = 'due today';
   else if (minOffset === 1) windowText = 'due tomorrow';
   else                      windowText = 'this week';
-  if (windowEl) windowEl.textContent = '\u00b7 ' + items.length + ' ' + (items.length === 1 ? 'bill' : 'bills') + ' ' + windowText;
+
+  // Group by source to describe where the bills come from
+  const bySource = {};
+  items.forEach(it => { const key = it.source || ''; bySource[key] = (bySource[key] || 0) + it.amount; });
+  const sourceKeys = Object.keys(bySource);
+  let sourcePhrase = '';
+  if (sourceKeys.length === 1 && sourceKeys[0]) sourcePhrase = ' from ' + sourceLabel(sourceKeys[0]);
+  else if (sourceKeys.length > 1) sourcePhrase = ' from ' + sourceKeys.length + ' sources';
+
+  // Current balance: only shown when all bills come from one bank account
+  let balancePhrase = '';
+  if (sourceKeys.length === 1) {
+    const acct = accountForSource(sourceKeys[0]);
+    if (acct) {
+      const accts = getBankAccountsForMonth(calYear, calMonth);
+      const live = accts.find(a => a.id === acct.id);
+      const bal = live ? (live.balance || 0) : (acct.balance || 0);
+      balancePhrase = ', balance ' + fmt(bal);
+    }
+  }
+
+  const count = items.length;
+  const summarySentence = count + ' payment' + (count === 1 ? '' : 's') + ' ' + windowText +
+    sourcePhrase + ' totalling ' + fmt(total) + balancePhrase;
+  if (windowEl) windowEl.textContent = summarySentence;
 
   const dayLabel = (it) => {
     if (it.offset === 0) return 'Today';
