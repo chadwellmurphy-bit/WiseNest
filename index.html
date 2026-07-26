@@ -4599,6 +4599,7 @@ function renderUpcomingBills() {
 
   // Current balance: only shown when all bills come from one bank account
   let balancePhrase = '';
+  let coverLine = '';
   if (sourceKeys.length === 1) {
     const acct = accountForSource(sourceKeys[0]);
     if (acct) {
@@ -4606,13 +4607,23 @@ function renderUpcomingBills() {
       const live = accts.find(a => a.id === acct.id);
       const bal = live ? (live.balance || 0) : (acct.balance || 0);
       balancePhrase = ', balance ' + fmt(bal);
+      // Does the balance cover the total due?
+      const remaining = bal - total;
+      if (remaining >= 0) {
+        coverLine = '<span style="color:var(--income-green)">✓ Covered · ' + fmt(remaining) + ' left after</span>';
+      } else {
+        coverLine = '<span style="color:var(--expense-red)">⚠ Short ' + fmt(Math.abs(remaining)) + '</span>';
+      }
     }
   }
 
   const count = items.length;
   const summarySentence = count + ' payment' + (count === 1 ? '' : 's') + ' ' + windowText +
     sourcePhrase + ' totalling ' + fmt(total) + balancePhrase;
-  if (windowEl) windowEl.textContent = summarySentence;
+  if (windowEl) {
+    windowEl.innerHTML = escapeHtml(summarySentence) +
+      (coverLine ? '<span style="display:block;margin-top:3px;font-family:var(--font-mono);font-size:0.88em">' + coverLine + '</span>' : '');
+  }
 
   const dayLabel = (it) => {
     if (it.offset === 0) return 'Today';
