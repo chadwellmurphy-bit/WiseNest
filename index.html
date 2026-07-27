@@ -4684,6 +4684,25 @@ function renderUpcomingBills() {
     });
   }
 
+  // Expected income landing in the same window (offset 1..horizon).
+  // Used to make the coverage check realistic when payday falls before bills.
+  let expectedIncome = 0;
+  for (let offset = 1; offset <= horizon; offset++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    const yr = d.getFullYear(), mo = d.getMonth(), day = d.getDate();
+    budget.income.forEach(item => {
+      if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
+      if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+      const payDays = getIncomeDaysInMonth(item, yr, mo);
+      const monthRate = getIncomeAmountForMonth(item.id, yr, mo);
+      payDays.forEach((pd, idx) => {
+        if (pd !== day) return;
+        const actual = getActualPay(yr, mo, item.id, idx);
+        expectedIncome += (actual !== null ? actual : monthRate);
+      });
+    });
+  }
+
   if (items.length === 0) { section.style.display = 'none'; return; }
   section.style.display = '';
 
@@ -4725,11 +4744,14 @@ function renderUpcomingBills() {
     if (!acct) return '';
     const live = getBankAccountsForMonth(calYear, calMonth).find(a => a.id === acct.id) || acct;
     const bal = live.balance || 0;
-    const remaining = bal - amtDue;
+    // Expected income in the window counts toward available funds
+    const available = bal + expectedIncome;
+    const remaining = available - amtDue;
+    const incNote = expectedIncome > 0 ? ' (incl. ' + fmt(expectedIncome) + ' income)' : '';
     if (remaining >= 0) {
-      return '<span style="color:var(--income-green)">✓ Covered · ' + fmt(remaining) + ' left after</span>';
+      return '<span style="color:var(--income-green)">✓ Covered · ' + fmt(remaining) + ' left after' + incNote + '</span>';
     }
-    return '<span style="color:var(--expense-red)">⚠ Short ' + fmt(Math.abs(remaining)) + '</span>';
+    return '<span style="color:var(--expense-red)">⚠ Short ' + fmt(Math.abs(remaining)) + incNote + '</span>';
   };
 
   const count = items.length;
