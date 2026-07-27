@@ -419,6 +419,21 @@
     margin-bottom: 32px;
   }
 
+  .bank-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .bank-group-label {
+    font-family: var(--font-mono);
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+    margin-bottom: 8px;
+    padding-left: 2px;
+  }
+
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -2302,15 +2317,8 @@
       <div class="section-body" id="upcoming-body" style="max-height:0;overflow:hidden"></div>
     </div>
 
-    <div class="section" id="bank-summary-section" style="margin-top:16px">
-      <div class="section-header" style="cursor:pointer" onclick="toggleBankSummary()">
-        <div class="section-title"><div class="section-dot" style="background:var(--income-green)"></div>Bank Accounts</div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="section-total" id="bank-summary-total" style="color:var(--income-green)">$0</div>
-          <svg id="bank-summary-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><polyline points="4 6 8 10 12 6"></polyline></svg>
-        </div>
-      </div>
-      <div class="section-body" id="bank-summary-body" style="max-height:0;overflow:hidden"></div>
+    <div class="section" id="bank-summary-section" style="margin-top:16px;background:none;border:none;padding:0">
+      <div id="bank-summary-tiles"></div>
     </div>
 
     <div class="section" id="breakdowns-section" style="margin-top:16px">
@@ -2435,7 +2443,9 @@
     </div>
     </div>
 
-  </div><!-- /page-summary -->
+  </div></div>
+
+  <!-- /page-summary -->
 
   <!-- ══ PAGE: CREDIT CARDS ══════════════════════════════════ -->
   <div class="page" id="page-creditcards">
@@ -4714,45 +4724,43 @@ function renderUpcomingBills() {
   if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
 }
 
-// Render a compact bank accounts summary on the dashboard: total in the header,
-// each account with its balance in the collapsible body.
+// Render bank accounts as small tiles on the dashboard, grouped into
+// Chequing and Savings, max 3 per row (fewer stretch to fill the row).
 function renderBankSummary() {
   const section = document.getElementById('bank-summary-section');
-  const totalEl = document.getElementById('bank-summary-total');
-  const body = document.getElementById('bank-summary-body');
-  if (!section || !body) return;
+  const wrap = document.getElementById('bank-summary-tiles');
+  if (!section || !wrap) return;
   const accts = getBankAccountsForMonth(calYear, calMonth);
   if (!accts || accts.length === 0) { section.style.display = 'none'; return; }
   section.style.display = '';
-  const total = accts.reduce((s, a) => s + (a.balance || 0), 0);
-  if (totalEl) totalEl.textContent = fmt(total);
-  body.innerHTML = '<div style="padding:4px 0">' + accts.map(a => {
+
+  const chequing = accts.filter(a => a.type !== 'savings');
+  const savings  = accts.filter(a => a.type === 'savings');
+
+  const tile = (a) => {
     const presetKey = getBankPresetKey(a);
     const icon = a.logo
-      ? '<img src="' + a.logo + '" style="width:20px;height:20px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0">'
-      : (presetKey ? bankBadgeHTML(presetKey, 20) : '<span style="width:20px;flex-shrink:0"></span>');
-    const typeLabel = a.type === 'savings' ? 'Savings' : 'Chequing';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px;border-bottom:1px solid var(--border)">' +
-      '<div style="display:flex;align-items:center;gap:10px;min-width:0">' + icon +
-        '<div style="min-width:0">' +
-          '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(a.name) + '</div>' +
-          '<div style="font-family:var(--font-mono);font-size:0.7em;color:var(--muted)">' + typeLabel + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div style="font-family:var(--font-mono);font-size:0.95em;color:var(--income-green);flex-shrink:0;margin-left:10px">' + fmt(a.balance || 0) + '</div>' +
+      ? '<img src="' + a.logo + '" style="width:30px;height:30px;border-radius:6px;object-fit:contain;background:#fff">'
+      : (presetKey ? bankBadgeHTML(presetKey, 30) : '<span style="width:30px;height:30px;display:inline-block"></span>');
+    const asOf = a.asOf ? 'as of ' + fmtAsOf(a.asOf) : '';
+    return '<div class="stat-card" style="padding:14px 12px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px">' +
+      icon +
+      '<div style="font-size:0.78em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">' + escapeHtml(a.name) + '</div>' +
+      '<div class="value" style="font-size:clamp(1.1em,4vw,1.5em);color:var(--income-green)">' + fmt(a.balance || 0) + '</div>' +
+      (asOf ? '<div style="font-family:var(--font-mono);font-size:0.62em;color:var(--muted)">' + asOf + '</div>' : '') +
     '</div>';
-  }).join('') + '</div>';
-  if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
-}
+  };
 
-function toggleBankSummary() {
-  const body = document.getElementById('bank-summary-body');
-  const chev = document.getElementById('bank-summary-chevron');
-  if (!body) return;
-  const isOpen = body.classList.contains('is-open') || (body.style.maxHeight && body.style.maxHeight !== '0px');
-  toggleSection('bank-summary-body');
-  if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-180deg)';
-  if (!isOpen) setTimeout(() => { if (body.classList.contains('is-open')) body.style.maxHeight = 'none'; }, 260);
+  const grid = (list) => '<div class="bank-tile-grid" style="grid-template-columns:repeat(' + Math.min(list.length, 3) + ',1fr)">' + list.map(tile).join('') + '</div>';
+
+  let html = '';
+  if (chequing.length) {
+    html += '<div class="bank-group-label">Chequing</div>' + grid(chequing);
+  }
+  if (savings.length) {
+    html += '<div class="bank-group-label"' + (chequing.length ? ' style="margin-top:14px"' : '') + '>Savings</div>' + grid(savings);
+  }
+  wrap.innerHTML = html;
 }
 
 // Toggle the charts/breakdowns section
@@ -7001,28 +7009,28 @@ function openCalDetail(day) {
 // ── Main render dispatcher ──────────────────────────────────────
 // ── BANK BALANCE FOOTER (shown below month/week/day calendar views) ──
 function buildCalBankBalanceFooter() {
-  const chequing = bankAccounts.filter(a => a.type !== 'savings');
+  // Show chequing accounts as tiles below the calendar, matching the dashboard.
+  const chequing = getBankAccountsForMonth(calYear, calMonth).filter(a => a.type !== 'savings');
   if (chequing.length === 0) return '';
-  const rows = chequing.map(a => {
-    const srcKey = a.name.toLowerCase().replace(/\s+/g,'').replace('chequing','').replace('bank','').replace('account','');
-    const possibleKeys = [a.name.toLowerCase(), srcKey, a.name.split(' ')[0].toLowerCase()];
-    const logoSrc = possibleKeys.map(k => LOGOS[k]).find(Boolean) || null;
-    const logoHtml = logoSrc
-      ? `<img src="${logoSrc}" style="width:16px;height:16px;border-radius:3px;object-fit:contain;background:#fff;flex-shrink:0">`
-      : `<span style="width:16px;height:16px;display:inline-block;border-radius:3px;background:var(--surface2);flex-shrink:0"></span>`;
-    const asOfHtml = a.asOf
-      ? `<span style="color:var(--muted);font-size:0.85em"> · as of ${fmtAsOf(a.asOf)}</span>`
-      : `<span style="color:var(--muted);font-size:0.85em;font-style:italic"> · not updated</span>`;
-    return `<div style="display:flex;align-items:center;gap:8px">
-      ${logoHtml}
-      <span style="flex:1;color:var(--text)">${escHtml(a.name)}${asOfHtml}</span>
-      <span style="font-family:var(--font-mono);font-weight:600;color:var(--income-green)">${fmt(a.balance)}</span>
-    </div>`;
-  }).join('');
-  return `<div style="margin-top:14px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
-    <div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Chequing Balances</div>
-    <div style="display:flex;flex-direction:column;gap:8px;font-size:0.9em;font-family:var(--font-mono)">${rows}</div>
-  </div>`;
+  const tile = (a) => {
+    const presetKey = getBankPresetKey(a);
+    const icon = a.logo
+      ? '<img src="' + a.logo + '" style="width:30px;height:30px;border-radius:6px;object-fit:contain;background:#fff">'
+      : (presetKey ? bankBadgeHTML(presetKey, 30) : '<span style="width:30px;height:30px;display:inline-block"></span>');
+    const asOf = a.asOf ? 'as of ' + fmtAsOf(a.asOf) : 'not updated';
+    return '<div class="stat-card" style="padding:14px 12px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px">' +
+      icon +
+      '<div style="font-size:0.78em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">' + escHtml(a.name) + '</div>' +
+      '<div class="value" style="font-size:clamp(1.1em,4vw,1.5em);color:var(--income-green)">' + fmt(a.balance || 0) + '</div>' +
+      '<div style="font-family:var(--font-mono);font-size:0.62em;color:var(--muted)">' + asOf + '</div>' +
+    '</div>';
+  };
+  const cols = Math.min(chequing.length, 3);
+  return '<div style="margin-top:16px">' +
+    '<div class="bank-group-label">Chequing</div>' +
+    '<div class="bank-tile-grid" style="grid-template-columns:repeat(' + cols + ',1fr)">' +
+      chequing.map(tile).join('') +
+    '</div></div>';
 }
 
 function renderCalendar() {
