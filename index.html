@@ -2229,14 +2229,12 @@
       <div class="month-year-group">
         <div class="month-nav">
           <button id="prev-month">←</button>
-          <span id="current-month">Mar</span>
+          <span id="current-month" onclick="toggleYearDial()" style="cursor:pointer" title="Change month or year">Mar</span>
           <button id="next-month">→</button>
         </div>
-        <!-- Year picker — dial -->
+        <!-- Month/Year picker dial (opened by tapping the month) -->
         <div style="position:relative;">
-          <button class="year-btn" id="year-btn" onclick="toggleYearDial()">
-            <span id="year-display">2026</span>
-          </button>
+          <span id="year-display" style="display:none">2026</span>
           <div class="year-dial-wrap" id="year-dial-wrap">
             <div class="year-dial-viewport" id="year-dial-viewport">
               <div class="year-dial-selected-bar"></div>
@@ -2249,6 +2247,14 @@
           </div>
         </div>
       </div>
+      <button class="gear-btn" onclick="navTo('calendar')" title="Calendar" style="margin-right:2px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+      </button>
       <button class="gear-btn" onclick="openSettings()" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"></circle>
@@ -7410,10 +7416,10 @@ function dialStep(delta) {
 
 function toggleYearDial() {
   const wrap = document.getElementById('year-dial-wrap');
-  const btn  = document.getElementById('year-btn');
+  const btn  = document.getElementById('current-month');
   if (!wrap) return;
   const isOpen = wrap.classList.toggle('open');
-  btn.classList.toggle('open', isOpen);
+  if (btn) btn.classList.toggle('open', isOpen);
   if (isOpen) {
     buildDialList();
     initDialDrag();
@@ -7422,7 +7428,7 @@ function toggleYearDial() {
 
 function closeYearDial() {
   const wrap = document.getElementById('year-dial-wrap');
-  const btn  = document.getElementById('year-btn');
+  const btn  = document.getElementById('current-month');
   if (wrap) wrap.classList.remove('open');
   if (btn)  btn.classList.remove('open');
 }
@@ -7484,7 +7490,7 @@ function initDialDrag() {
 let _dialJustDragged = false;
 document.addEventListener('click', e => {
   if (_dialJustDragged) { _dialJustDragged = false; return; }
-  const btn  = document.getElementById('year-btn');
+  const btn  = document.getElementById('current-month');
   const wrap = document.getElementById('year-dial-wrap');
   if (btn && wrap && !btn.contains(e.target) && !wrap.contains(e.target)) {
     closeYearDial();
