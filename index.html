@@ -1950,10 +1950,10 @@
 
   @media (max-width: 480px) {
     .summary-strip { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .summary-strip .stat-card { padding: 12px 9px; }
-    .summary-strip .stat-card .value { font-size: clamp(1.05em, 4.4vw, 1.4em); }
-    .summary-strip .stat-card .label { font-size: 0.56em; margin-bottom: 5px; }
-    .summary-strip .stat-card .sub   { font-size: 0.62em; margin-top: 4px; }
+    .summary-strip .stat-card { padding: 13px 10px; }
+    .summary-strip .stat-card .value { font-size: clamp(1.3em, 5.6vw, 1.75em); }
+    .summary-strip .stat-card .label { font-size: 0.66em; margin-bottom: 6px; }
+    .summary-strip .stat-card .sub   { font-size: 0.72em; margin-top: 5px; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .rogers-meters.biz-meters { grid-template-columns: 1fr 1fr 1fr !important; gap: 6px !important; }
     .biz-meters .rm-value { font-size: 1.05em; }
@@ -2074,10 +2074,10 @@
 
   @media (max-width: 480px) {
     .summary-strip { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .summary-strip .stat-card { padding: 12px 9px; }
-    .summary-strip .stat-card .value { font-size: clamp(1.05em, 4.4vw, 1.4em); }
-    .summary-strip .stat-card .label { font-size: 0.56em; margin-bottom: 5px; }
-    .summary-strip .stat-card .sub   { font-size: 0.62em; margin-top: 4px; }
+    .summary-strip .stat-card { padding: 13px 10px; }
+    .summary-strip .stat-card .value { font-size: clamp(1.3em, 5.6vw, 1.75em); }
+    .summary-strip .stat-card .label { font-size: 0.66em; margin-bottom: 6px; }
+    .summary-strip .stat-card .sub   { font-size: 0.72em; margin-top: 5px; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .rogers-meters { grid-template-columns: 1fr 1fr !important; }
     .rogers-meters.biz-meters { grid-template-columns: 1fr 1fr 1fr !important; gap: 6px !important; }
@@ -2302,6 +2302,23 @@
       <div class="section-body" id="upcoming-body" style="max-height:0;overflow:hidden"></div>
     </div>
 
+    <div class="section" id="bank-summary-section" style="margin-top:16px">
+      <div class="section-header" style="cursor:pointer" onclick="toggleBankSummary()">
+        <div class="section-title"><div class="section-dot" style="background:var(--income-green)"></div>Bank Accounts</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="section-total" id="bank-summary-total" style="color:var(--income-green)">$0</div>
+          <svg id="bank-summary-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><polyline points="4 6 8 10 12 6"></polyline></svg>
+        </div>
+      </div>
+      <div class="section-body" id="bank-summary-body" style="max-height:0;overflow:hidden"></div>
+    </div>
+
+    <div class="section" id="breakdowns-section" style="margin-top:16px">
+      <div class="section-header" style="cursor:pointer" onclick="toggleBreakdowns()">
+        <div class="section-title"><div class="section-dot" style="background:var(--accent)"></div>Breakdowns</div>
+        <svg id="breakdowns-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><polyline points="4 6 8 10 12 6"></polyline></svg>
+      </div>
+      <div class="section-body" id="breakdowns-body" style="max-height:0;overflow:hidden;padding:14px">
     <div class="main-grid" style="margin-top:24px">
       <div class="left-col">
         <div class="chart-section">
@@ -2376,6 +2393,8 @@
         </div>
       </div>
     </div>
+      </div>
+    </div><!-- /breakdowns-section -->
 
 
 
@@ -2383,9 +2402,10 @@
     <div class="section" id="yearly-section" style="margin-top:16px">
       <div class="section-header" style="cursor:pointer" onclick="toggleYearly()">
         <div class="section-title"><div class="section-dot" style="background:var(--accent)"></div>Yearly &amp; Long-term</div>
-        <svg id="yearly-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(-180deg)"><polyline points="4 6 8 10 12 6"></polyline></svg>
+        <svg id="yearly-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(0deg)"><polyline points="4 6 8 10 12 6"></polyline></svg>
       </div>
-      <div class="section-body is-open" id="yearly-body" style="max-height:none;padding:14px">
+      <div class="section-body" id="yearly-body" style="max-height:0;overflow:hidden">
+        <div style="padding:14px">
         <div class="stat-card" id="tile-networth" style="margin-bottom:14px;border-color:rgba(200,245,62,0.3)">
           <div class="label">Net Worth</div>
           <div class="value" id="networth-value" style="font-size:clamp(1.6em,6vw,2.4em)">$0</div>
@@ -4694,6 +4714,58 @@ function renderUpcomingBills() {
   if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
 }
 
+// Render a compact bank accounts summary on the dashboard: total in the header,
+// each account with its balance in the collapsible body.
+function renderBankSummary() {
+  const section = document.getElementById('bank-summary-section');
+  const totalEl = document.getElementById('bank-summary-total');
+  const body = document.getElementById('bank-summary-body');
+  if (!section || !body) return;
+  const accts = getBankAccountsForMonth(calYear, calMonth);
+  if (!accts || accts.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  const total = accts.reduce((s, a) => s + (a.balance || 0), 0);
+  if (totalEl) totalEl.textContent = fmt(total);
+  body.innerHTML = '<div style="padding:4px 0">' + accts.map(a => {
+    const presetKey = getBankPresetKey(a);
+    const icon = a.logo
+      ? '<img src="' + a.logo + '" style="width:20px;height:20px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0">'
+      : (presetKey ? bankBadgeHTML(presetKey, 20) : '<span style="width:20px;flex-shrink:0"></span>');
+    const typeLabel = a.type === 'savings' ? 'Savings' : 'Chequing';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="display:flex;align-items:center;gap:10px;min-width:0">' + icon +
+        '<div style="min-width:0">' +
+          '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(a.name) + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.7em;color:var(--muted)">' + typeLabel + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-family:var(--font-mono);font-size:0.95em;color:var(--income-green);flex-shrink:0;margin-left:10px">' + fmt(a.balance || 0) + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+  if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
+}
+
+function toggleBankSummary() {
+  const body = document.getElementById('bank-summary-body');
+  const chev = document.getElementById('bank-summary-chevron');
+  if (!body) return;
+  const isOpen = body.classList.contains('is-open') || (body.style.maxHeight && body.style.maxHeight !== '0px');
+  toggleSection('bank-summary-body');
+  if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-180deg)';
+  if (!isOpen) setTimeout(() => { if (body.classList.contains('is-open')) body.style.maxHeight = 'none'; }, 260);
+}
+
+// Toggle the charts/breakdowns section
+function toggleBreakdowns() {
+  const body = document.getElementById('breakdowns-body');
+  const chev = document.getElementById('breakdowns-chevron');
+  if (!body) return;
+  const isOpen = body.classList.contains('is-open') || (body.style.maxHeight && body.style.maxHeight !== '0px');
+  toggleSection('breakdowns-body');
+  if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-180deg)';
+  if (!isOpen) setTimeout(() => { if (body.classList.contains('is-open')) body.style.maxHeight = 'none'; }, 260);
+}
+
 // Toggle the Yearly & Long-term section, resetting height so content isn't clipped
 function toggleYearly() {
   const body = document.getElementById('yearly-body');
@@ -4750,6 +4822,7 @@ function updateSummary() {
   if (typeof updateBusinessBadge === 'function') updateBusinessBadge();
   renderUpcomingBills();
   applyDashboardTiles();
+  renderBankSummary();
   const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
   const bal = totalIncome - totalExpenses;
   // Clamp percentages so refunds (negative expenses) don't produce nonsense values
