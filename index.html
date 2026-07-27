@@ -4800,12 +4800,9 @@ function updateSummary() {
   }
   const ylMonths = document.getElementById('yearly-leftover-months');
   if (ylMonths) {
-    const bizPortion = yearlyBusinessLinkedIncome(calYear, calMonth);
-    let ylText = yl.months === 0
+    ylMonths.textContent = yl.months === 0
       ? 'No months with data yet'
       : yl.months + ' month' + (yl.months === 1 ? '' : 's') + ' \u00b7 avg ' + fmt(yl.total / yl.months) + '/mo';
-    if (bizPortion > 0) ylText += '  \u00b7  incl. ' + fmt(bizPortion) + ' business';
-    ylMonths.textContent = ylText;
   }
   const ylBar = document.getElementById('yearly-leftover-bar');
   if (ylBar) {
