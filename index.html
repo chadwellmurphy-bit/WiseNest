@@ -2261,19 +2261,19 @@
   <!-- ══ PAGE: SUMMARY ══════════════════════════════════════ -->
   <div class="page active" id="page-summary">
     <div class="summary-strip">
-    <div class="stat-card income">
+    <div class="stat-card income" id="tile-income">
       <div class="label">Monthly Income</div>
       <div class="value" id="total-income">$0</div>
       <div class="sub" id="income-sub">Actual this month</div>
       <div class="bar-bg"><div class="bar-fill" id="income-bar" style="width:100%"></div></div>
     </div>
-    <div class="stat-card expense">
+    <div class="stat-card expense" id="tile-expenses">
       <div class="label">Total Expenses</div>
       <div class="value" id="total-expenses">$0</div>
       <div class="sub">All fixed obligations</div>
       <div class="bar-bg"><div class="bar-fill" id="expense-bar" style="width: 70%;"></div></div>
     </div>
-    <div class="stat-card balance">
+    <div class="stat-card balance" id="tile-balance">
       <div class="label">Money Left Over</div>
       <div class="value" id="balance" style="color: var(--accent);">$0</div>
       <div class="sub">After all expenses</div>
@@ -2380,26 +2380,26 @@
         <svg id="yearly-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(-180deg)"><polyline points="4 6 8 10 12 6"></polyline></svg>
       </div>
       <div class="section-body is-open" id="yearly-body" style="max-height:none;padding:14px">
-        <div class="stat-card" id="networth-card" style="margin-bottom:14px;border-color:rgba(200,245,62,0.3)">
+        <div class="stat-card" id="tile-networth" style="margin-bottom:14px;border-color:rgba(200,245,62,0.3)">
           <div class="label">Net Worth</div>
           <div class="value" id="networth-value" style="font-size:clamp(1.6em,6vw,2.4em)">$0</div>
           <div class="sub" id="networth-sub">assets &minus; liabilities</div>
         </div>
         <div class="summary-strip" style="margin:0">
-<div class="stat-card debt">
+<div class="stat-card debt" id="tile-debt">
       <div class="label">Total Debt</div>
       <div class="value" id="total-debt">$0</div>
       <div class="sub" id="debt-change-sub">vs last month: <span style="color:var(--income-green)">▼ $1,299 (3%)</span></div>
       <div class="bar-bg"><div class="bar-fill" id="debt-bar" style="width:0%"></div></div>
     </div>
-    <div class="stat-card" style="border-color: rgba(62,255,163,0.3)">
+    <div class="stat-card" id="tile-yearly" style="border-color: rgba(62,255,163,0.3)">
       <div class="label">Yearly Left Over</div>
       <div class="value" id="yearly-leftover" style="color: var(--income-green);">$0</div>
       <div class="sub" id="yearly-leftover-sub">Running year-to-date total</div>
       <div id="yearly-leftover-months" style="font-size:0.7143em;color:var(--muted);font-family:var(--font-mono);margin-top:2px"></div>
       <div class="bar-bg"><div class="bar-fill" id="yearly-leftover-bar" style="width:0%; background: var(--income-green)"></div></div>
     </div>
-    <div class="stat-card" style="border-color: rgba(91,138,255,0.3)">
+    <div class="stat-card" id="tile-mortgage" style="border-color: rgba(91,138,255,0.3)">
       <div class="label">Mortgage Renewal</div>
       <div class="value" id="mtg-renewal-value" style="color:#5b8aff">--</div>
       <div class="sub" id="mtg-renewal-sub">months until term end</div>
@@ -4672,6 +4672,25 @@ function renderUpcomingBills() {
   if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
 }
 
+// Show/hide dashboard tiles per user settings. Also hides the whole
+// Yearly & Long-term section if none of its tiles are visible.
+function applyDashboardTiles() {
+  const t = appSettings.dashboardTiles || {};
+  const map = {
+    income: 'tile-income', expenses: 'tile-expenses', balance: 'tile-balance',
+    networth: 'tile-networth', debt: 'tile-debt', yearly: 'tile-yearly', mortgage: 'tile-mortgage',
+  };
+  Object.keys(map).forEach(key => {
+    const el = document.getElementById(map[key]);
+    if (el) el.style.display = (t[key] === false) ? 'none' : '';
+  });
+  // Hide the Yearly & Long-term section if all its tiles are off
+  const yearlyKeys = ['networth', 'debt', 'yearly', 'mortgage'];
+  const anyYearly = yearlyKeys.some(k => t[k] !== false);
+  const yearlySection = document.getElementById('yearly-section');
+  if (yearlySection) yearlySection.style.display = anyYearly ? '' : 'none';
+}
+
 // Compute net worth for a month: assets (bank accounts + investments)
 // minus liabilities (debts + mortgage balance).
 function computeNetWorth(yr, mo) {
@@ -4692,6 +4711,7 @@ function updateSummary() {
   const totalIncome = totalActualMonthlyIncome(calYear, calMonth);
   if (typeof updateBusinessBadge === 'function') updateBusinessBadge();
   renderUpcomingBills();
+  applyDashboardTiles();
   const totalExpenses = budget.expenses.reduce((s, e) => s + getExpenseAmount(e.id), 0);
   const bal = totalIncome - totalExpenses;
   // Clamp percentages so refunds (negative expenses) don't produce nonsense values
@@ -7538,6 +7558,40 @@ function applyBadgeVisibility() {
   });
 }
 
+const DASHBOARD_TILE_ITEMS = [
+  { key: 'income',   label: 'Monthly Income' },
+  { key: 'expenses', label: 'Total Expenses' },
+  { key: 'balance',  label: 'Money Left Over' },
+  { key: 'networth', label: 'Net Worth' },
+  { key: 'debt',     label: 'Total Debt' },
+  { key: 'yearly',   label: 'Yearly Left Over' },
+  { key: 'mortgage', label: 'Mortgage Renewal' },
+];
+
+function buildTileToggles() {
+  const container = document.getElementById('s-tile-toggles');
+  if (!container) return;
+  const t = appSettings.dashboardTiles || {};
+  container.innerHTML = '';
+  DASHBOARD_TILE_ITEMS.forEach(({ key, label }) => {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    row.style.cssText = 'padding:6px 0';
+    row.innerHTML = '<div class="setting-label" style="font-size:0.9em">' + label + '</div>' +
+      '<label class="toggle" style="flex-shrink:0">' +
+      '<input type="checkbox" ' + (t[key] !== false ? 'checked' : '') + ' onchange="toggleDashboardTile(\'' + key + '\',this.checked)">' +
+      '<div class="toggle-track"></div></label>';
+    container.appendChild(row);
+  });
+}
+
+function toggleDashboardTile(key, show) {
+  if (!appSettings.dashboardTiles) appSettings.dashboardTiles = {};
+  appSettings.dashboardTiles[key] = show;
+  saveSettings();
+  applyDashboardTiles();
+}
+
 function buildBadgeToggles() {
   const container = document.getElementById('s-badge-toggles');
   if (!container) return;
@@ -7650,6 +7704,10 @@ let appSettings = {
   rogersPct:      50,
   rogersKeep:     500,
   hiddenBadges:   {},   // { 'income': true, 'expenses': true, ... }
+  dashboardTiles: {     // which dashboard tiles are visible (default: all except net worth)
+    income: true, expenses: true, balance: true,
+    networth: false, debt: true, yearly: true, mortgage: true,
+  },
   businessEnabled: false, // show/hide the Business section
   businessName:    '',    // user-defined business name
 };
@@ -7734,6 +7792,7 @@ function syncSettingsUI() {
   const verEl = document.getElementById('s-app-version');
   if (verEl) verEl.textContent = APP_VERSION;
   buildBadgeToggles();
+  buildTileToggles();
 }
 function applySettings() {
   // Read UI → store. For mirrored fields, prefer whichever was just changed.
@@ -10319,6 +10378,14 @@ document.addEventListener('DOMContentLoaded', async () => {
               <input type="text" id="s-business-name" placeholder="Your business name" onchange="applySettings()" oninput="applySettings()"
                 style="flex-shrink:0;width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:0.95em;padding:8px 10px">
             </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Dashboard Tiles</div>
+            <div class="setting-row" style="border:none;padding-bottom:4px">
+              <div class="setting-sub">Choose which tiles appear on your dashboard.</div>
+            </div>
+            <div id="s-tile-toggles" style="display:flex;flex-direction:column;gap:2px"></div>
           </div>
 
           <div class="settings-group">
