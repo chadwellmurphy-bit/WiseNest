@@ -2375,7 +2375,7 @@
 
     <!-- Yearly & long-term overview -->
     <div class="section" id="yearly-section" style="margin-top:16px">
-      <div class="section-header" style="cursor:pointer" onclick="toggleSection('yearly-body'); (function(c){if(c)c.style.transform=(document.getElementById('yearly-body').classList.contains('is-open'))?'rotate(0deg)':'rotate(-180deg)';})(document.getElementById('yearly-chevron'))">
+      <div class="section-header" style="cursor:pointer" onclick="toggleYearly()">
         <div class="section-title"><div class="section-dot" style="background:var(--accent)"></div>Yearly &amp; Long-term</div>
         <svg id="yearly-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(-180deg)"><polyline points="4 6 8 10 12 6"></polyline></svg>
       </div>
@@ -4542,6 +4542,22 @@ function monthLeftover(yr, mo) {
 
 // Sum of "money left over" from January up to and including the given month,
 // counting only months with actual data entered (a running year-to-date balance)
+// Sum of business-linked income counted in the year-to-date leftover
+// (paid bookings the user chose to "Add to Money In"), Jan -> uptoMo.
+function yearlyBusinessLinkedIncome(yr, uptoMo) {
+  const last = (uptoMo === undefined) ? 11 : uptoMo;
+  let total = 0;
+  budget.income.forEach(item => {
+    if (!item.businessLink) return;
+    for (let m = 0; m <= last; m++) {
+      if (monthHasActualData(yr, m)) {
+        total += monthlyActualIncomeForMonth(item, yr, m);
+      }
+    }
+  });
+  return total;
+}
+
 function yearlyLeftover(yr, uptoMo) {
   const last = (uptoMo === undefined) ? 11 : uptoMo;
   let total = 0, months = 0;
@@ -4672,6 +4688,18 @@ function renderUpcomingBills() {
   if (body.classList.contains('is-open')) body.style.maxHeight = 'none';
 }
 
+// Toggle the Yearly & Long-term section, resetting height so content isn't clipped
+function toggleYearly() {
+  const body = document.getElementById('yearly-body');
+  const chev = document.getElementById('yearly-chevron');
+  if (!body) return;
+  const isOpen = body.classList.contains('is-open') || (body.style.maxHeight && body.style.maxHeight !== '0px');
+  toggleSection('yearly-body');
+  if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-180deg)';
+  // After expanding, let height follow content
+  if (!isOpen) setTimeout(() => { if (body.classList.contains('is-open')) body.style.maxHeight = 'none'; }, 260);
+}
+
 // Show/hide dashboard tiles per user settings. Also hides the whole
 // Yearly & Long-term section if none of its tiles are visible.
 function applyDashboardTiles() {
@@ -4689,6 +4717,10 @@ function applyDashboardTiles() {
   const anyYearly = yearlyKeys.some(k => t[k] !== false);
   const yearlySection = document.getElementById('yearly-section');
   if (yearlySection) yearlySection.style.display = anyYearly ? '' : 'none';
+  // If the yearly body is expanded, let its height follow the content (tiles may
+  // have just been shown/hidden, which changes the natural height).
+  const yb = document.getElementById('yearly-body');
+  if (yb && yb.classList.contains('is-open')) yb.style.maxHeight = 'none';
 }
 
 // Compute net worth for a month: assets (bank accounts + investments)
@@ -4768,9 +4800,12 @@ function updateSummary() {
   }
   const ylMonths = document.getElementById('yearly-leftover-months');
   if (ylMonths) {
-    ylMonths.textContent = yl.months === 0
+    const bizPortion = yearlyBusinessLinkedIncome(calYear, calMonth);
+    let ylText = yl.months === 0
       ? 'No months with data yet'
       : yl.months + ' month' + (yl.months === 1 ? '' : 's') + ' \u00b7 avg ' + fmt(yl.total / yl.months) + '/mo';
+    if (bizPortion > 0) ylText += '  \u00b7  incl. ' + fmt(bizPortion) + ' business';
+    ylMonths.textContent = ylText;
   }
   const ylBar = document.getElementById('yearly-leftover-bar');
   if (ylBar) {
