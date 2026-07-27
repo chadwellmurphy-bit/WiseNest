@@ -840,7 +840,7 @@
     background: transparent; color: var(--muted); transition: all 0.15s;
   }
   .trend-tab.active {
-    background: var(--invest-blue); color: #fff; border-color: var(--invest-blue);
+    background: #a8f0cf; color: #0a1f14; border-color: #a8f0cf;
   }
   .trend-tab.tt-active {
     background: #a8f0cf; color: #0a1f14; border-color: #a8f0cf;
@@ -2516,7 +2516,7 @@
     <div class="section" id="invest-panel">
       <div class="section-header">
         <div class="section-title">
-          <div class="section-dot" style="background: var(--invest-blue)"></div>
+          <div class="section-dot" style="background: #a8f0cf"></div>
           Investments
         </div>
         <div class="section-total" style="color: #a8f0cf" id="invest-total">$0</div>
@@ -3921,7 +3921,10 @@ function projectDebtBalance(i, targetYr, targetMo) {
 
   // ── Case 2b: balance override without overrideYr (legacy) ────────
   if (baseDebt.balanceOverride && baseDebt.manualBalance !== null) {
-    const keys = Object.keys(monthlyDebts).sort();
+    const keys = Object.keys(monthlyDebts).sort((a, b) => {
+      const pa = a.split('-').map(Number), pb = b.split('-').map(Number);
+      return (pa[0] * 12 + pa[1]) - (pb[0] * 12 + pb[1]);
+    });
     const targetVal = monthVal(targetYr, targetMo);
     let anchorKey = null, anchorYr, anchorMo;
     for (const k of keys) {
@@ -4008,13 +4011,16 @@ function projectDebtBalance(i, targetYr, targetMo) {
 function getInvestsForMonth(yr, mo) {
   const k = monthKey(yr, mo);
   if (monthlyInvests[k]) return monthlyInvests[k];
-  // No snapshot for this month: carry forward the most recent past snapshot
-  const targetKey = k;
-  const keys = Object.keys(monthlyInvests).sort();
-  let bestKey = null;
-  for (const ky of keys) {
-    if (ky <= targetKey) bestKey = ky;
-  }
+  // No snapshot for this month: carry forward the most recent PAST snapshot.
+  // Compare by numeric month value (yr*12+mo), NOT string order — otherwise
+  // "2026-10" (Nov) string-compares wrong against "2026-5" and picks Feb.
+  const targetV = monthVal(yr, mo);
+  let bestV = -1, bestKey = null;
+  Object.keys(monthlyInvests).forEach(ky => {
+    const parts = ky.split('-').map(Number);
+    const kv = parts[0] * 12 + parts[1];
+    if (kv <= targetV && kv > bestV) { bestV = kv; bestKey = ky; }
+  });
   if (bestKey) return monthlyInvests[bestKey];
   return investments;
 }
@@ -4038,13 +4044,15 @@ function ensureMonthDebts(yr, mo) {
 function ensureMonthInvests(yr, mo) {
   const k = monthKey(yr, mo);
   if (!monthlyInvests[k]) {
-    // Seed from the most recent past snapshot so values carry forward automatically.
-    // Only fall back to the base investments array if no prior snapshot exists.
-    const keys = Object.keys(monthlyInvests).sort();
-    let bestKey = null;
-    for (const ky of keys) {
-      if (ky < k) bestKey = ky; // strictly less-than: don't seed from self
-    }
+    // Seed from the most recent PAST snapshot so values carry forward automatically.
+    // Compare numerically (yr*12+mo), not by string order.
+    const targetV = monthVal(yr, mo);
+    let bestV = -1, bestKey = null;
+    Object.keys(monthlyInvests).forEach(ky => {
+      const parts = ky.split('-').map(Number);
+      const kv = parts[0] * 12 + parts[1];
+      if (kv < targetV && kv > bestV) { bestV = kv; bestKey = ky; }
+    });
     const source = bestKey ? monthlyInvests[bestKey] : investments;
     monthlyInvests[k] = JSON.parse(JSON.stringify(source));
   }
@@ -6584,7 +6592,7 @@ function renderInvestTrend() {
     const cx = xScale(idx).toFixed(1);
     const cy = yScale(p.value).toFixed(1);
     const isLast = idx === withData.length - 1;
-    return `<circle cx="${cx}" cy="${cy}" r="${isLast ? 5 : 3.5}" fill="${isLast ? 'var(--invest-blue)' : 'var(--surface)'}" stroke="var(--invest-blue)" stroke-width="2">
+    return `<circle cx="${cx}" cy="${cy}" r="${isLast ? 5 : 3.5}" fill="${isLast ? '#a8f0cf' : 'var(--surface)'}" stroke="#a8f0cf" stroke-width="2">
       <title>${p.label}: ${fmtT(p.value)}</title>
     </circle>`;
   }).join('');
@@ -6600,13 +6608,13 @@ function renderInvestTrend() {
   svg.innerHTML = `
     <defs>
       <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="var(--invest-blue)" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="var(--invest-blue)" stop-opacity="0"/>
+        <stop offset="0%" stop-color="#a8f0cf" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="#a8f0cf" stop-opacity="0"/>
       </linearGradient>
     </defs>
     ${gridLines}
     <path d="${areaD}" fill="url(#trendGrad)"/>
-    <path d="${pathD}" fill="none" stroke="var(--invest-blue)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${pathD}" fill="none" stroke="#a8f0cf" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
     ${labels}
   `;
@@ -10430,7 +10438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div class="trend-summary">
       <div class="trend-stat">
         <div class="trend-stat-label">Current</div>
-        <div class="trend-stat-value" id="trend-stat-current" style="color:var(--invest-blue)">—</div>
+        <div class="trend-stat-value" id="trend-stat-current" style="color:#a8f0cf">—</div>
       </div>
       <div class="trend-stat">
         <div class="trend-stat-label">Period Change</div>
