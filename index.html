@@ -524,8 +524,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    font-weight: 500;
-    font-size: 0.9286em;
+    font-weight: 600;
+    font-size: 1.15em;
   }
 
   .section-dot {
@@ -536,8 +536,8 @@
 
   .section-total {
     font-family:var(--font-mono);
-    font-size: 0.9286em;
-    font-weight: 500;
+    font-size: 1.15em;
+    font-weight: 600;
   }
 
   .section-body {
@@ -795,8 +795,8 @@
   .invest-value {
     font-family:var(--font-mono);
     font-size: 1.0em;
-    font-weight: 500;
-    color: var(--invest-blue);
+    font-weight: 600;
+    color: #a8f0cf;
   }
 
   /* INVESTMENT TREND MODAL */
@@ -2516,7 +2516,7 @@
           <div class="section-dot" style="background: var(--invest-blue)"></div>
           Investments
         </div>
-        <div class="section-total" style="color: var(--invest-blue)" id="invest-total">$0</div>
+        <div class="section-total" style="color: #a8f0cf" id="invest-total">$0</div>
       </div>
       <div id="invest-body"></div>
       <button class="add-btn" onclick="addInvestment()">+ Add investment</button>
@@ -4536,10 +4536,13 @@ function renderInvestments() {
       : '';
     return `
     <div class="invest-item">
-      <div style="flex:1;cursor:pointer;-webkit-tap-highlight-color:transparent" onclick="openInvestTrend(${i})" ontouchend="event.preventDefault();openInvestTrend(${i})" title="View trend">
-        <div style="font-size:0.9286em;font-weight:500;margin-bottom:6px">${inv.name}</div>
-        <div class="progress-track" style="width:120px">
-          <div class="progress-fill green" style="width:${pct}%"></div>
+      <div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;-webkit-tap-highlight-color:transparent" onclick="openInvestTrend(${i})" ontouchend="event.preventDefault();openInvestTrend(${i})" title="View trend">
+        ${inv.logo ? `<img src="${inv.logo}" style="width:30px;height:30px;border-radius:6px;object-fit:contain;background:#fff;flex-shrink:0">` : `<div style="width:30px;height:30px;border-radius:6px;background:var(--surface2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:0.7em;color:var(--muted)">${escHtml((inv.name||'?').charAt(0).toUpperCase())}</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.9286em;font-weight:500;margin-bottom:6px">${inv.name}</div>
+          <div class="progress-track" style="width:120px">
+            <div class="progress-fill green" style="width:${pct}%"></div>
+          </div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
@@ -4628,7 +4631,8 @@ function renderUpcomingBills() {
   const horizon = 7;
   const items = [];
 
-  for (let offset = 0; offset <= horizon; offset++) {
+  // Start at offset 1: bills due today are excluded (assumed already handled).
+  for (let offset = 1; offset <= horizon; offset++) {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
     const yr = d.getFullYear(), mo = d.getMonth(), day = d.getDate();
     budget.expenses.forEach(e => {
@@ -4656,49 +4660,72 @@ function renderUpcomingBills() {
   else if (minOffset === 1) windowText = 'due tomorrow';
   else                      windowText = 'this week';
 
-  // Group by source to describe where the bills come from
+  // Group bills by source
   const bySource = {};
-  items.forEach(it => { const key = it.source || ''; bySource[key] = (bySource[key] || 0) + it.amount; });
+  items.forEach(it => {
+    const key = it.source || '';
+    if (!bySource[key]) bySource[key] = { total: 0, count: 0 };
+    bySource[key].total += it.amount;
+    bySource[key].count += 1;
+  });
   const sourceKeys = Object.keys(bySource);
-  let sourcePhrase = '';
-  if (sourceKeys.length === 1 && sourceKeys[0]) sourcePhrase = ' from ' + sourceLabel(sourceKeys[0]);
-  else if (sourceKeys.length > 1) sourcePhrase = ' from ' + sourceKeys.length + ' sources';
 
-  // Current balance: shown when all bills come from one bank account.
-  // Bills may be keyed to an account ("acct:..") OR to a bank preset ("cibc").
-  // For a preset key, match it to an account of that same bank so we can still
-  // show a balance and a covered/short check.
-  let balancePhrase = '';
-  let coverLine = '';
-  if (sourceKeys.length === 1 && sourceKeys[0]) {
-    const key = sourceKeys[0];
+  // Resolve a source key to its bank account (handles both "acct:.." and preset keys)
+  const resolveAccount = (key) => {
+    if (!key) return null;
     let acct = accountForSource(key);
     if (!acct) {
       const accts0 = getBankAccountsForMonth(calYear, calMonth);
       acct = accts0.find(a => getBankPresetKey(a) === key) ||
              accts0.find(a => (a.name || '').toLowerCase().indexOf(key) !== -1);
     }
-    if (acct) {
-      const accts = getBankAccountsForMonth(calYear, calMonth);
-      const live = accts.find(a => a.id === acct.id) || acct;
-      const bal = live.balance || 0;
-      balancePhrase = ', balance ' + fmt(bal);
-      const remaining = bal - total;
-      if (remaining >= 0) {
-        coverLine = '<span style="color:var(--income-green)">✓ Covered · ' + fmt(remaining) + ' left after</span>';
-      } else {
-        coverLine = '<span style="color:var(--expense-red)">⚠ Short ' + fmt(Math.abs(remaining)) + '</span>';
-      }
+    return acct || null;
+  };
+
+  // Build a coverage line ("Covered · $X left after" / "Short $Y") for a source
+  const coverageFor = (key, amtDue) => {
+    const acct = resolveAccount(key);
+    if (!acct) return '';
+    const live = getBankAccountsForMonth(calYear, calMonth).find(a => a.id === acct.id) || acct;
+    const bal = live.balance || 0;
+    const remaining = bal - amtDue;
+    if (remaining >= 0) {
+      return '<span style="color:var(--income-green)">✓ Covered · ' + fmt(remaining) + ' left after</span>';
     }
-  }
+    return '<span style="color:var(--expense-red)">⚠ Short ' + fmt(Math.abs(remaining)) + '</span>';
+  };
 
   const count = items.length;
-  const summarySentence = count + ' payment' + (count === 1 ? '' : 's') + ' ' + windowText +
-    sourcePhrase + ' totalling ' + fmt(total) + balancePhrase;
-  if (windowEl) {
-    windowEl.innerHTML = escapeHtml(summarySentence) +
-      (coverLine ? '<span style="display:block;margin-top:3px;font-family:var(--font-mono);font-size:0.88em">' + coverLine + '</span>' : '');
+  let html = '';
+
+  if (sourceKeys.length <= 1) {
+    // Single source (or no source): one sentence + coverage line
+    const key = sourceKeys[0] || '';
+    const acct = resolveAccount(key);
+    const balancePhrase = acct
+      ? ', balance ' + fmt((getBankAccountsForMonth(calYear, calMonth).find(a => a.id === acct.id) || acct).balance || 0)
+      : '';
+    const sourcePhrase = key ? ' from ' + sourceLabel(key) : '';
+    const sentence = count + ' payment' + (count === 1 ? '' : 's') + ' ' + windowText +
+      sourcePhrase + ' totalling ' + fmt(total) + balancePhrase;
+    const cover = coverageFor(key, total);
+    html = escapeHtml(sentence) +
+      (cover ? '<span style="display:block;margin-top:3px;font-family:var(--font-mono);font-size:0.88em">' + cover + '</span>' : '');
+  } else {
+    // Multiple sources: a lead line, then one block per source
+    html = escapeHtml(count + ' payments ' + windowText + ' from ' + sourceKeys.length + ' sources totalling ' + fmt(total));
+    sourceKeys.forEach(key => {
+      const g = bySource[key];
+      const label = key ? sourceLabel(key) : 'No source';
+      const cover = coverageFor(key, g.total);
+      html += '<span style="display:block;margin-top:6px">' +
+        '<span style="color:var(--text)">' + escapeHtml(label + ': ' + g.count + ' payment' + (g.count === 1 ? '' : 's') + ' · ' + fmt(g.total)) + '</span>' +
+        (cover ? '<span style="display:block;font-family:var(--font-mono);font-size:0.85em;margin-top:1px">' + cover + '</span>' : '') +
+      '</span>';
+    });
   }
+
+  if (windowEl) windowEl.innerHTML = html;
 
   const dayLabel = (it) => {
     if (it.offset === 0) return 'Today';
@@ -6207,6 +6234,33 @@ function updateDebtPreview() {
 
 let investEditIdx = null;
 
+// Investment logo upload
+let investModalLogoData = null;
+
+function previewInvestLogo(input) {
+  const f = input && input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = e => { investModalLogoData = e.target.result; showInvestLogoPreview(investModalLogoData); };
+  reader.readAsDataURL(f);
+  input.value = '';
+}
+
+function clearInvestLogo() {
+  investModalLogoData = null;
+  showInvestLogoPreview(null);
+  const fi = document.getElementById('invest-modal-logo-file');
+  if (fi) fi.value = '';
+}
+
+function showInvestLogoPreview(src) {
+  const prev = document.getElementById('invest-modal-logo-preview');
+  if (!prev) return;
+  prev.innerHTML = src
+    ? '<img src="' + src + '" style="width:34px;height:34px;object-fit:contain;border-radius:6px">'
+    : '<span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>';
+}
+
 function editInvestment(i) {
   investEditIdx = i;
   const monthData = getInvestsForMonth(calYear, calMonth);
@@ -6214,6 +6268,8 @@ function editInvestment(i) {
   document.getElementById('invest-modal-title').textContent = 'Edit Investment — ' + MONTHS[calMonth] + ' ' + calYear;
   document.getElementById('invest-modal-name').value = inv.name;
   document.getElementById('invest-modal-value').value = inv.value;
+  investModalLogoData = inv.logo || (investments[i] && investments[i].logo) || null;
+  showInvestLogoPreview(investModalLogoData);
   document.getElementById('invest-modal').classList.add('open');
   setTimeout(() => document.getElementById('invest-modal-name').focus(), 150);
 }
@@ -6223,6 +6279,8 @@ function addInvestment() {
   document.getElementById('invest-modal-title').textContent = 'Add Investment';
   document.getElementById('invest-modal-name').value = '';
   document.getElementById('invest-modal-value').value = '';
+  investModalLogoData = null;
+  clearInvestLogo();
   document.getElementById('invest-modal').classList.add('open');
   setTimeout(() => document.getElementById('invest-modal-name').focus(), 150);
 }
@@ -6241,11 +6299,16 @@ function saveInvestModal() {
   if (!name) { document.getElementById('invest-modal-name').focus(); return; }
   pushUndo();
   const obj = { name, value };
+  if (investModalLogoData) obj.logo = investModalLogoData;
   if (investEditIdx !== null) {
     const monthData = ensureMonthInvests(calYear, calMonth);
     monthData[investEditIdx] = obj;
-    // Keep base name in sync
-    if (investments[investEditIdx]) investments[investEditIdx].name = name;
+    // Keep base name + logo in sync
+    if (investments[investEditIdx]) {
+      investments[investEditIdx].name = name;
+      if (investModalLogoData) investments[investEditIdx].logo = investModalLogoData;
+      else delete investments[investEditIdx].logo;
+    }
   } else {
     investments.push(obj);
     ensureMonthInvests(calYear, calMonth).push({ ...obj });
@@ -10243,6 +10306,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div class="form-field">
       <label>Current Value (CAD)</label>
       <input type="number" id="invest-modal-value" placeholder="0" min="0">
+    </div>
+    <div class="form-field">
+      <label>Logo <span style="color:var(--muted);font-size:0.85em">optional</span></label>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+        <div id="invest-modal-logo-preview" style="width:38px;height:38px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+          <span style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono)">logo</span>
+        </div>
+        <label style="cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;color:var(--text)">
+          Choose image
+          <input type="file" id="invest-modal-logo-file" accept="image/*" style="display:none" onchange="previewInvestLogo(this)">
+        </label>
+        <button type="button" onclick="clearInvestLogo()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--muted);font-family:var(--font-sans);font-size:0.8571em;cursor:pointer">Clear</button>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-primary" onclick="saveInvestModal()">Save</button>
