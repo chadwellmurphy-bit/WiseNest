@@ -5135,6 +5135,82 @@ function getBankPresetKey(a) {
   return m ? m.key : null;
 }
 
+// ── Chequing reconciliation ──────────────────────────────────────────────
+// Project what a chequing account's balance "should" be now, based on the
+// income deposited to it and expenses paid from it since its "as of" date.
+// Returns { expected, projectedFlow, incCount, expCount } or null if it can't
+// be computed (no as-of date, or account can't be resolved).
+function reconcileChequing(acct) {
+  if (!acct || acct.type === 'savings') return null;
+  if (!acct.asOf) return null;
+
+  const asOf = new Date(acct.asOf + 'T00:00:00');
+  if (isNaN(asOf.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  // Only project transactions strictly AFTER the as-of date, up to and
+  // including today. Anything dated in the future is pending — skip it so it
+  // doesn't create a false gap.
+  const startVal = monthVal(asOf.getFullYear(), asOf.getMonth());
+  const endVal   = monthVal(today.getFullYear(), today.getMonth());
+
+  // Does a source/dest key point at THIS account? (handles "acct:.." and presets)
+  const keyMatchesAccount = (key) => {
+    if (!key) return false;
+    const a = accountForSource(key);
+    if (a) return a.id === acct.id;
+    // preset key like "cibc" — match to this account's preset/name
+    const pk = getBankPresetKey(acct);
+    if (pk && key === pk) return true;
+    return (acct.name || '').toLowerCase().indexOf(String(key)) !== -1;
+  };
+
+  const inWindow = (yr, mo, day) => {
+    const d = new Date(yr, mo, day);
+    d.setHours(0, 0, 0, 0);
+    return d > asOf && d <= today;
+  };
+
+  let inflow = 0, incCount = 0, outflow = 0, expCount = 0;
+
+  // Walk each month from the as-of month through the current month
+  for (let mv = startVal; mv <= endVal; mv++) {
+    const yr = Math.floor(mv / 12);
+    const mo = mv % 12;
+
+    // Income deposited to this account
+    budget.income.forEach(item => {
+      if (!keyMatchesAccount(item.destAccount)) return;
+      if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
+      if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+      const payDays = getIncomeDaysInMonth(item, yr, mo);
+      const monthRate = getIncomeAmountForMonth(item.id, yr, mo);
+      payDays.forEach((pd, idx) => {
+        if (!inWindow(yr, mo, pd)) return;
+        const actual = getActualPay(yr, mo, item.id, idx);
+        inflow += (actual !== null ? actual : monthRate);
+        incCount++;
+      });
+    });
+
+    // Expenses paid from this account
+    budget.expenses.forEach(e => {
+      if (e.ccOtherCharges) return;
+      if (!keyMatchesAccount(getExpenseSourceForMonth(e.id, yr, mo))) return;
+      if (e.startYr !== undefined && (yr < e.startYr || (yr === e.startYr && mo < e.startMo))) return;
+      if (e.endYr !== undefined && (yr > e.endYr || (yr === e.endYr && mo > e.endMo))) return;
+      const dueNum = parseInt(getExpenseDueForMonth(e.id, yr, mo), 10);
+      if (!dueNum || !inWindow(yr, mo, dueNum)) return;
+      const amt = getExpenseAmountForMonth(e.id, yr, mo);
+      if (amt > 0) { outflow += amt; expCount++; }
+    });
+  }
+
+  const projectedFlow = inflow - outflow;
+  const expected = (acct.balance || 0) + projectedFlow;
+  return { expected, projectedFlow, inflow, outflow, incCount, expCount };
+}
+
 function renderBankAccounts() {
   const body = document.getElementById('bank-body');
   if (!body) return;
@@ -5178,6 +5254,16 @@ function renderBankAccounts() {
       subLine = asOfLabel
         ? `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px">as of ${asOfLabel}</div>`
         : `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:4px;font-style:italic">balance not yet updated</div>`;
+      // Reconciliation: projected balance based on flows since the as-of date
+      const rec = reconcileChequing(a);
+      if (rec) {
+        if ((rec.incCount + rec.expCount) > 0) {
+          const flowSign = rec.projectedFlow >= 0 ? '+' : '-';
+          subLine += `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--accent2);margin-top:3px" title="Since ${asOfLabel}: ${rec.incCount} deposit(s) totalling ${fmt(rec.inflow)}, ${rec.expCount} payment(s) totalling ${fmt(rec.outflow)}">projected now: ${fmt(rec.expected)} (${flowSign}${fmt(Math.abs(rec.projectedFlow))} since update)</div>`;
+        } else {
+          subLine += `<div style="font-family:var(--font-mono);font-size:0.7143em;color:var(--muted);margin-top:3px">✓ up to date · no activity since ${asOfLabel}</div>`;
+        }
+      }
     }
 
     return `
