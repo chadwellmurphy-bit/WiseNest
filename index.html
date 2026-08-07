@@ -3764,6 +3764,9 @@ function updateSyncStatus(state, msg) { setSyncStatus(state, msg); }
 
 async function handlePull() {
   if (!gistConfigured()) { showGistSetup(); return; }
+  // A pull replaces in-memory data with the Gist copy. Unlike the accidental
+  // swipe, this is a deliberate button press, so ask rather than refuse.
+  if (dataDirty && !confirm('You have unsaved changes.\n\nPulling will replace them with the last saved version. Continue?')) return;
   const btn = document.getElementById('sync-pull-btn');
   btn.textContent = '⏳';
   btn.disabled = true;
@@ -3850,6 +3853,10 @@ let dataDirty = (function () {
   try { return localStorage.getItem(UNSAVED_KEY) === '1'; } catch (e) { return false; }
 })();
 let _saveStateTimer = null;
+// Serialised snapshot of the data as of the last successful save/pull.
+// Undoing back to this exact state means there is nothing left to push, so
+// the Save buttons should go dark again. null = no known sync point.
+let cleanState = null;
 
 // Write current in-memory state to localStorage immediately.
 function saveState() {
@@ -3866,15 +3873,47 @@ function markDirty() {
   dataDirty = true;
   try { localStorage.setItem(UNSAVED_KEY, '1'); } catch (e) {}
   if (_saveStateTimer) clearTimeout(_saveStateTimer);
-  _saveStateTimer = setTimeout(() => { _saveStateTimer = null; saveState(); }, 300);
+  _saveStateTimer = setTimeout(() => {
+    _saveStateTimer = null;
+    saveState();
+    // Also catches editing a value and then editing it straight back.
+    reconcileDirty();
+  }, 300);
   syncDirtyUI();
 }
 
-// Local and remote now agree — drop the flag.
+// Local and remote now agree — drop the flag and remember this as the
+// reference point that undo can return to.
 function clearDirty() {
   dataDirty = false;
+  cleanState = (typeof captureState === 'function') ? captureState() : null;
   try { localStorage.removeItem(UNSAVED_KEY); } catch (e) {}
   syncDirtyUI();
+}
+
+// Compare live data against the last sync point and set the flag to match.
+// Called after an undo, and after an edit burst settles.
+function reconcileDirty() {
+  if (cleanState === null) return;  // no reference point; leave the flag alone
+  let now;
+  try { now = captureState(); } catch (e) { return; }
+  if (now === cleanState) {
+    if (dataDirty) {
+      dataDirty = false;
+      try { localStorage.removeItem(UNSAVED_KEY); } catch (e) {}
+      syncDirtyUI();
+    }
+  } else if (!dataDirty) {
+    markDirty();
+  }
+}
+
+// Called once at startup when nothing is pending, so undo has something to
+// measure against in a session that begins already in sync.
+function seedCleanState() {
+  if (!dataDirty && cleanState === null) {
+    try { cleanState = captureState(); } catch (e) {}
+  }
 }
 
 // Amber dot on the Save button whenever there is unpushed work.
@@ -6008,6 +6047,9 @@ function performUndo() {
   if (document.getElementById('page-creditcards').classList.contains('active')) renderCreditCardsPage();
   if (typeof renderBusiness === 'function' && document.getElementById('page-business') && document.getElementById('page-business').classList.contains('active')) renderBusiness();
   syncUndoBtn();
+  // If this undo landed us back on the last-synced state, there is nothing
+  // left to push and the Save buttons should go dark.
+  reconcileDirty();
 }
 
 function syncUndoBtn() {
@@ -10748,6 +10790,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyBusinessVisibility();
   detectAppVersion();
   syncUndoBtn();
+  seedCleanState();
   syncDirtyUI();
 
   setTimeout(() => {
