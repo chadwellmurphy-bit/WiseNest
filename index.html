@@ -1657,6 +1657,26 @@
   body.nav-slideover .hamburger-btn { display: flex; }
 
   /* ── SETTINGS DRAWER ───────────────────────────────────── */
+  /* Unsaved-changes review */
+  .uc-head {
+    font-family: var(--font-mono); font-size: 0.7143em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px;
+  }
+  .uc-note { font-size: 0.85em; color: var(--muted); line-height: 1.6; }
+  .uc-warn {
+    font-size: 0.85em; color: var(--text); line-height: 1.6; margin-bottom: 8px;
+    background: rgba(255,159,46,.10); border: 1px solid rgba(255,159,46,.35);
+    border-radius: 8px; padding: 9px 11px;
+  }
+  .uc-list { list-style: none; margin: 0; padding: 0; }
+  .uc-list li {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+  }
+  .uc-list li:last-child { border-bottom: none; }
+  .uc-sec { font-size: 0.875em; color: var(--text); font-weight: 600; }
+  .uc-det { font-family: var(--font-mono); font-size: 0.75em; color: var(--muted); line-height: 1.5; }
+
   /* Settings is a normal page now, not a right-hand drawer. The panel
      slider is reused as-is; these overrides just undo the drawer's
      fixed-height flex context. */
@@ -2314,7 +2334,7 @@
       <button class="save-btn" id="save-btn" onclick="handleSave()" style="flex:1;justify-content:center"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg> Save</button>
       <button id="sync-pull-btn" onclick="handlePull()" title="Pull latest data from Gist" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:10px;cursor:pointer;padding:0 12px;font-size:1.1em;transition:all .15s;flex-shrink:0" onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↻</button>
     </div>
-    <div id="sync-status" onclick="showGistSetup()" style="font-size:0.8571em;font-family:var(--font-mono);color:var(--text);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
+    <div id="sync-status" onclick="dataDirty ? openUnsavedReview() : showGistSetup()" style="font-size:0.8571em;font-family:var(--font-mono);color:var(--text);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
   </div>
 </nav>
 
@@ -3505,6 +3525,245 @@ function loadState() {
       if (incomeAmounts[i.id] === undefined) incomeAmounts[i.id] = i.amount || 0;
     });
   } catch(e) { console.warn('loadState error', e); }
+}
+
+
+// ─── UNSAVED CHANGES REVIEW ──────────────────────────────────────
+// Lets you see exactly what is pending on this device, and whether the Gist
+// has moved on since this device last synced (i.e. you saved from elsewhere),
+// before choosing which copy wins.
+
+let _ucRemote = null;          // remote data in captureState() shape, or null
+let _ucRemoteState = 'unknown';  // 'match' | 'ahead' | 'error' | 'none'
+
+function _ucParse(str) { try { return JSON.parse(str); } catch (e) { return null; } }
+
+// A Gist payload uses buildSavePayload() key names; captureState() uses its
+// own. Map one onto the other so a single diff routine handles both.
+function payloadToCaptureShape(pl) {
+  if (!pl) return null;
+  return {
+    budgetIncome:            pl.incomeItems || [],
+    incomeAmounts:           pl.income || {},
+    incomeAmountSchedule:    pl.incomeAmountSchedule || {},
+    incomeActuals:           pl.incomeActuals || {},
+    budgetExpenses:          pl.expenseItems || [],
+    expenseAmounts:          pl.expenses || {},
+    expenseHistory:          pl.expenseHistory || {},
+    monthOverrides:          pl.monthOverrides || {},
+    debts:                   pl.debtsData || [],
+    investments:             pl.investmentsData || [],
+    monthlyDebts:            pl.monthlyDebts || {},
+    monthlyInvests:          pl.monthlyInvests || {},
+    rogersPoints:            pl.cardRewards || {},
+    ccActualSpend:           pl.ccActualSpend || {},
+    bankAccounts:            pl.bankAccountsData || [],
+    monthlyBankAccounts:     pl.monthlyBankAccounts || {},
+    mortgageData:            pl.mortgageData || {},
+    businessBookings:        pl.businessBookings || [],
+    businessExpenses:        pl.businessExpenses || [],
+    businessExpenseSchedule: pl.businessExpenseSchedule || {},
+    businessMeta:            pl.businessMeta || {},
+  };
+}
+
+const UC_SECTIONS = [
+  { key: 'budgetIncome',            label: 'Money In',              type: 'list' },
+  { key: 'budgetExpenses',          label: 'Money Out',             type: 'list' },
+  { key: 'debts',                   label: 'Debt',                  type: 'list' },
+  { key: 'investments',             label: 'Investments',           type: 'list' },
+  { key: 'bankAccounts',            label: 'Bank Accounts',         type: 'list' },
+  { key: 'businessBookings',        label: 'Business bookings',     type: 'list' },
+  { key: 'businessExpenses',        label: 'Business expenses',     type: 'list' },
+  { key: 'incomeAmounts',           label: 'Income amounts',        type: 'map' },
+  { key: 'expenseAmounts',          label: 'Expense amounts',       type: 'map' },
+  { key: 'incomeActuals',           label: 'Actual pay entries',    type: 'map' },
+  { key: 'incomeAmountSchedule',    label: 'Income schedule',       type: 'map' },
+  { key: 'expenseHistory',          label: 'Expense history',       type: 'map' },
+  { key: 'monthOverrides',          label: 'Monthly overrides',     type: 'map' },
+  { key: 'monthlyDebts',            label: 'Debt snapshots',        type: 'map' },
+  { key: 'monthlyInvests',          label: 'Investment snapshots',  type: 'map' },
+  { key: 'monthlyBankAccounts',     label: 'Bank snapshots',        type: 'map' },
+  { key: 'rogersPoints',            label: 'Cash back / points',    type: 'map' },
+  { key: 'ccActualSpend',           label: 'Card spend',            type: 'map' },
+  { key: 'businessExpenseSchedule', label: 'Business expense schedule', type: 'map' },
+  { key: 'mortgageData',            label: 'Mortgage',              type: 'obj' },
+  { key: 'businessMeta',            label: 'Business settings',     type: 'obj' },
+];
+
+function _ucName(item, fallback) {
+  if (item && typeof item === 'object' && item.name) return String(item.name);
+  return fallback;
+}
+
+function _ucDiffList(av, bv) {
+  const A = {}, B = {}, notes = [];
+  (av || []).forEach((x, i) => { A[(x && x.id != null) ? x.id : 'i' + i] = x; });
+  (bv || []).forEach((x, i) => { B[(x && x.id != null) ? x.id : 'i' + i] = x; });
+  Object.keys(B).forEach(k => {
+    if (!(k in A)) notes.push('added "' + _ucName(B[k], k) + '"');
+    else if (JSON.stringify(A[k]) !== JSON.stringify(B[k])) notes.push('changed "' + _ucName(B[k], k) + '"');
+  });
+  Object.keys(A).forEach(k => { if (!(k in B)) notes.push('removed "' + _ucName(A[k], k) + '"'); });
+  return notes;
+}
+
+function _ucDiffMap(av, bv) {
+  av = av || {}; bv = bv || {};
+  let added = 0, changed = 0, removed = 0;
+  Object.keys(bv).forEach(k => {
+    if (!(k in av)) added++;
+    else if (JSON.stringify(av[k]) !== JSON.stringify(bv[k])) changed++;
+  });
+  Object.keys(av).forEach(k => { if (!(k in bv)) removed++; });
+  const parts = [];
+  if (added)   parts.push(added + ' added');
+  if (changed) parts.push(changed + ' changed');
+  if (removed) parts.push(removed + ' removed');
+  return parts.length ? [parts.join(', ')] : [];
+}
+
+function _ucDiffObj(av, bv) {
+  av = av || {}; bv = bv || {};
+  const keys = Object.keys(av).concat(Object.keys(bv)).filter((k, i, arr) => arr.indexOf(k) === i);
+  const changed = keys.filter(k => JSON.stringify(av[k]) !== JSON.stringify(bv[k]));
+  if (!changed.length) return [];
+  const shown = changed.slice(0, 6).join(', ');
+  return [shown + (changed.length > 6 ? ' +' + (changed.length - 6) + ' more' : '')];
+}
+
+// Returns [{ label, notes: [...] }] describing how b differs from a.
+function diffStates(a, b) {
+  if (!a || !b) return [];
+  const out = [];
+  UC_SECTIONS.forEach(sec => {
+    let notes;
+    if (sec.type === 'list')      notes = _ucDiffList(a[sec.key], b[sec.key]);
+    else if (sec.type === 'map')  notes = _ucDiffMap(a[sec.key], b[sec.key]);
+    else                          notes = _ucDiffObj(a[sec.key], b[sec.key]);
+    if (notes.length) out.push({ label: sec.label, notes: notes });
+  });
+  return out;
+}
+
+function _ucRenderList(list) {
+  return '<ul class="uc-list">' + list.map(s => {
+    const shown = s.notes.slice(0, 4).join('; ');
+    const more = s.notes.length > 4 ? ' \u2026 +' + (s.notes.length - 4) + ' more' : '';
+    return '<li><span class="uc-sec">' + escapeHtml(s.label) + '</span>' +
+           '<span class="uc-det">' + escapeHtml(shown + more) + '</span></li>';
+  }).join('') + '</ul>';
+}
+
+function renderUnsavedReview(pending) {
+  const body = document.getElementById('unsaved-body');
+  const sub  = document.getElementById('unsaved-sub');
+  if (!body) return;
+
+  const cleanObj = cleanState ? _ucParse(cleanState) : null;
+  const localObj = _ucParse(captureState());
+  let html = '';
+
+  html += '<div class="uc-head">On this device, not yet pushed</div>';
+  if (!cleanObj) {
+    html += '<div class="uc-note">This device has no record of its last sync, so the individual changes cannot be listed. Pushing will replace the cloud copy with whatever is on this device.</div>';
+  } else {
+    const mine = diffStates(cleanObj, localObj);
+    html += mine.length ? _ucRenderList(mine)
+      : '<div class="uc-note">Nothing actually differs from the last sync \u2014 the flag is stale. Either button below will clear it.</div>';
+  }
+
+  html += '<div class="uc-head" style="margin-top:20px">On the cloud</div>';
+  if (pending) {
+    html += '<div class="uc-note">Checking the Gist\u2026</div>';
+  } else if (_ucRemoteState === 'none') {
+    html += '<div class="uc-note">Gist sync is not set up on this device.</div>';
+  } else if (_ucRemoteState === 'error') {
+    html += '<div class="uc-note" style="color:var(--expense-red)">Could not reach the Gist. Do not discard anything until it is reachable \u2014 there is no way to tell what is up there.</div>';
+  } else if (!cleanObj || !_ucRemote) {
+    html += '<div class="uc-note">Not enough information to compare.</div>';
+  } else {
+    const theirs = diffStates(cleanObj, _ucRemote);
+    if (theirs.length) {
+      html += '<div class="uc-warn">The cloud copy has changed since this device last synced \u2014 most likely edits made on another device. Pushing from here would overwrite them.</div>';
+      html += _ucRenderList(theirs);
+    } else {
+      html += '<div class="uc-note">Unchanged since this device last synced. Safe to push.</div>';
+    }
+  }
+
+  body.innerHTML = html;
+  if (sub) {
+    sub.textContent = (_ucRemoteState === 'ahead' && !pending)
+      ? 'Both copies have changed \u2014 choose which one wins'
+      : 'Review before pushing or discarding';
+  }
+}
+
+async function openUnsavedReview(remoteAlreadyKnown) {
+  const modal = document.getElementById('unsaved-modal');
+  if (!modal) return;
+  if (!remoteAlreadyKnown) { _ucRemote = null; _ucRemoteState = 'unknown'; }
+  renderUnsavedReview(!remoteAlreadyKnown);
+  modal.classList.add('open');
+  if (remoteAlreadyKnown) return;
+
+  if (!gistConfigured()) { _ucRemoteState = 'none'; renderUnsavedReview(false); return; }
+  try {
+    _ucRemote = payloadToCaptureShape(await pullFromGist());
+    const cleanObj = cleanState ? _ucParse(cleanState) : null;
+    _ucRemoteState = (cleanObj && diffStates(cleanObj, _ucRemote).length) ? 'ahead' : 'match';
+  } catch (e) {
+    _ucRemote = null; _ucRemoteState = 'error';
+  }
+  renderUnsavedReview(false);
+}
+
+function closeUnsavedReview() {
+  const m = document.getElementById('unsaved-modal');
+  if (m) m.classList.remove('open');
+}
+
+function unsavedPushMine() { closeUnsavedReview(); handleSave(); }
+
+async function unsavedUseCloud() {
+  if (!gistConfigured()) { closeUnsavedReview(); showGistSetup(); return; }
+  if (!confirm('Discard the unsaved changes on this device and replace them with the cloud copy?\n\nThis cannot be undone.')) return;
+  closeUnsavedReview();
+  setSyncStatus('syncing');
+  const ok = await loadFromGist();
+  if (ok) {
+    renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+    renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage();
+    updateSummary(); renderCalendar();
+    applyBusinessVisibility(); renderBusiness();
+    undoStack.length = 0; syncUndoBtn();   // that history refers to discarded data
+    setSyncStatus('ok', '\u2713 Synced');
+    setTimeout(() => setSyncStatus('idle'), 2500);
+  } else {
+    setSyncStatus('error', 'Could not reach the Gist');
+    setTimeout(() => setSyncStatus('idle'), 3000);
+  }
+}
+
+// On launch with pending work, quietly check whether the Gist moved on while
+// this device was away. If it did, surface the choice instead of assuming
+// this device is authoritative.
+async function checkStartupConflict() {
+  if (!gistConfigured() || !dataDirty || !cleanState) return;
+  try {
+    _ucRemote = payloadToCaptureShape(await pullFromGist());
+    const cleanObj = _ucParse(cleanState);
+    if (cleanObj && diffStates(cleanObj, _ucRemote).length) {
+      _ucRemoteState = 'ahead';
+      setSyncStatus('error', 'Conflict \u2014 tap to review');
+      openUnsavedReview(true);
+    } else {
+      _ucRemoteState = 'match';
+    }
+  } catch (e) {
+    _ucRemote = null; _ucRemoteState = 'error';
+  }
 }
 
 // ─── GIST SYNC ──────────────────────────────────────────────────
@@ -10826,7 +11085,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // the pull would silently replace them with the older Gist copy.
   syncDirtyUI();
   if (gistConfigured() && dataDirty) {
-    setSyncStatus('error', 'Unsaved changes \u2014 tap Save to push');
+    setSyncStatus('error', 'Unsaved changes \u2014 tap to review');
+    checkStartupConflict();
   } else if (gistConfigured()) {
     setSyncStatus('syncing', 'Syncing\u2026');
     try {
@@ -11782,6 +12042,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div style="padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
       <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem(nsKey('gist_token'));localStorage.removeItem(nsKey('gist_id'));closeGistSetup();setSyncStatus('idle','\u2601\uFE0F Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
+    </div>
+  </div>
+</div>
+
+<!-- UNSAVED CHANGES REVIEW -->
+<div class="modal-overlay" id="unsaved-modal" onclick="if(event.target===this)closeUnsavedReview()" style="z-index:1150">
+  <div class="modal" style="max-width:470px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h2 style="font-family:var(--font-serif);font-size:1.3em;letter-spacing:-.02em;margin:0">Unsaved changes</h2>
+      <button onclick="closeUnsavedReview()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.4em;line-height:1;padding:0">&times;</button>
+    </div>
+    <div id="unsaved-sub" style="font-family:var(--font-mono);font-size:0.75em;color:var(--muted);margin-bottom:18px"></div>
+    <div id="unsaved-body"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
+      <button class="save-btn" style="width:100%;justify-content:center;box-sizing:border-box" onclick="unsavedPushMine()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg>
+        Push this device's data
+      </button>
+      <button class="reset-btn" onclick="unsavedUseCloud()">Discard mine, use the cloud copy</button>
+      <button class="btn-secondary" style="width:100%" onclick="closeUnsavedReview()">Decide later</button>
     </div>
   </div>
 </div>
