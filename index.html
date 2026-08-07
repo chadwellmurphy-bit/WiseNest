@@ -3849,14 +3849,18 @@ async function handleSave() {
 // dataDirty tracks "local is ahead of the Gist" and survives reloads, so the
 // startup sync and pull-to-refresh can refuse to overwrite unpushed edits.
 const UNSAVED_KEY = APP_NS + ':unsaved';
+const CLEAN_KEY   = APP_NS + ':cleansnap';
 let dataDirty = (function () {
   try { return localStorage.getItem(UNSAVED_KEY) === '1'; } catch (e) { return false; }
 })();
 let _saveStateTimer = null;
 // Serialised snapshot of the data as of the last successful save/pull.
 // Undoing back to this exact state means there is nothing left to push, so
-// the Save buttons should go dark again. null = no known sync point.
-let cleanState = null;
+// the Save buttons should go dark again. Persisted, so the reference point
+// survives a reload or an app restart mid-edit.
+let cleanState = (function () {
+  try { return localStorage.getItem(CLEAN_KEY); } catch (e) { return null; }
+})();
 
 // Write current in-memory state to localStorage immediately.
 function saveState() {
@@ -3886,7 +3890,12 @@ function markDirty() {
 // reference point that undo can return to.
 function clearDirty() {
   dataDirty = false;
-  cleanState = (typeof captureState === 'function') ? captureState() : null;
+  if (typeof captureState === 'function') {
+    try {
+      cleanState = captureState();
+      localStorage.setItem(CLEAN_KEY, cleanState);
+    } catch (e) { /* quota or serialise failure: reconcile just no-ops */ }
+  }
   try { localStorage.removeItem(UNSAVED_KEY); } catch (e) {}
   syncDirtyUI();
 }
@@ -3894,7 +3903,7 @@ function clearDirty() {
 // Compare live data against the last sync point and set the flag to match.
 // Called after an undo, and after an edit burst settles.
 function reconcileDirty() {
-  if (cleanState === null) return;  // no reference point; leave the flag alone
+  if (!cleanState) return;  // no reference point; leave the flag alone
   let now;
   try { now = captureState(); } catch (e) { return; }
   if (now === cleanState) {
@@ -3911,8 +3920,11 @@ function reconcileDirty() {
 // Called once at startup when nothing is pending, so undo has something to
 // measure against in a session that begins already in sync.
 function seedCleanState() {
-  if (!dataDirty && cleanState === null) {
-    try { cleanState = captureState(); } catch (e) {}
+  if (!dataDirty && !cleanState) {
+    try {
+      cleanState = captureState();
+      localStorage.setItem(CLEAN_KEY, cleanState);
+    } catch (e) {}
   }
 }
 
@@ -6020,7 +6032,7 @@ function performUndo() {
   Object.keys(monthlyInvests).forEach(k => delete monthlyInvests[k]);
   Object.assign(monthlyInvests, snap.monthlyInvests);
   Object.keys(cardRewards).forEach(k => delete cardRewards[k]);
-  Object.assign(cardRewards, snap.cardRewards || {});
+  Object.assign(cardRewards, snap.rogersPoints || snap.cardRewards || {});
   if (snap.ccActualSpend) {
     Object.keys(ccActualSpend).forEach(k => delete ccActualSpend[k]);
     Object.assign(ccActualSpend, snap.ccActualSpend);
