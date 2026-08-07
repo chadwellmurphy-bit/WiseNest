@@ -2836,6 +2836,13 @@
 
           <div class="settings-group">
             <div class="settings-group-label">Data</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Sync payload size</div>
+                <div class="setting-sub">Over 1 MB and the Gist API stops returning data inline</div>
+              </div>
+              <div id="payload-size" style="font-family:var(--font-mono);font-size:0.8571em;color:var(--muted);flex-shrink:0">—</div>
+            </div>
             <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
               <div class="setting-label">Backup</div>
               <div class="setting-sub">Save a snapshot of all your data as a file, or restore one.</div>
@@ -3189,9 +3196,37 @@ let businessMeta = { hstEnabled: false, mileageEnabled: false };
 function getBusinessBookingsForMonth(yr, mo) {
   return businessBookings.filter(b => b.yr === yr && b.mo === mo);
 }
-// Total revenue booked in a month (full booking amounts, regardless of paid status)
+// The month a booking's money actually landed, or null if it has not.
+// Falls back to the event month when a booking is marked Paid without a
+// payment date recorded.
+function bookingPaidMonth(b) {
+  if (!b || b.status !== 'paid') return null;
+  const py = (b.paidYr === undefined || b.paidYr === null) ? b.yr : b.paidYr;
+  const pm = (b.paidMo === undefined || b.paidMo === null) ? b.mo : b.paidMo;
+  if (py === undefined || pm === undefined) return null;
+  return { yr: py, mo: pm };
+}
+
+// Bookings whose payment landed in a given month, wherever the event sat.
+function getBusinessPaymentsForMonth(yr, mo) {
+  return businessBookings.filter(b => {
+    const pm = bookingPaidMonth(b);
+    return pm && pm.yr === yr && pm.mo === mo;
+  });
+}
+
+// Realised revenue for a month: cash actually received that month.
+// Quoted and Confirmed are pipeline, not income, so they stay out of revenue,
+// net profit and YTD until the money is in.
 function businessRevenueForMonth(yr, mo) {
-  return getBusinessBookingsForMonth(yr, mo).reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+  return getBusinessPaymentsForMonth(yr, mo)
+    .reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+}
+// Value of this month's bookings not yet paid — quoted plus confirmed.
+function businessPipelineForMonth(yr, mo) {
+  return getBusinessBookingsForMonth(yr, mo)
+    .filter(b => b.status !== 'paid')
+    .reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
 }
 // Effective amount for a recurring business expense in a given month (effective-dated)
 function getBusinessExpenseAmountForMonth(item, yr, mo) {
@@ -3234,7 +3269,9 @@ function businessYTD(yr, uptoMo) {
   for (let m = 0; m <= last; m++) {
     const hasBookings = getBusinessBookingsForMonth(yr, m).length > 0;
     const hasExpenses = getBusinessExpensesForMonth(yr, m).length > 0;
-    if (hasBookings || hasExpenses) {
+    // A month with no events can still have taken in money for an earlier gig.
+    const hasPayments = getBusinessPaymentsForMonth(yr, m).length > 0;
+    if (hasBookings || hasExpenses || hasPayments) {
       revenue  += businessRevenueForMonth(yr, m);
       expenses += businessExpensesForMonth(yr, m);
       months++;
@@ -3527,6 +3564,105 @@ function loadState() {
   } catch(e) { console.warn('loadState error', e); }
 }
 
+
+
+// ─── LOGO IMAGE HANDLING ─────────────────────────────────────────
+// Logos render at ~34px. Storing a full-resolution camera photo as base64
+// bloats the sync payload by megabytes, and past 1MB the Gist API stops
+// returning file contents inline. Everything is downscaled on the way in.
+const LOGO_MAX_PX = 128;
+const LOGO_BIG_BYTES = 24000;   // anything above this is worth re-compressing
+
+// Shrink a data URL to LOGO_MAX_PX on its longest edge. Falls back to the
+// original on any failure (e.g. an SVG with no intrinsic size).
+function downscaleDataUrl(src, cb) {
+  if (!src || typeof src !== 'string' || src.indexOf('data:image') !== 0) { cb(src); return; }
+  let done = false;
+  const finish = v => { if (!done) { done = true; cb(v); } };
+  try {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const longest = Math.max(img.width, img.height);
+        if (!longest) { finish(src); return; }
+        const scale = Math.min(1, LOGO_MAX_PX / longest);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        let out = '';
+        try { out = c.toDataURL('image/webp', 0.85); } catch (e) {}
+        if (out.indexOf('data:image/webp') !== 0) {
+          try { out = c.toDataURL('image/png'); } catch (e) { out = ''; }
+        }
+        finish((out && out.length < src.length) ? out : src);
+      } catch (e) { finish(src); }
+    };
+    img.onerror = () => finish(src);
+    img.src = src;
+  } catch (e) { finish(src); }
+  // Safety net: never leave a caller hanging on a stalled decode.
+  setTimeout(() => finish(src), 4000);
+}
+
+// Read a picked file and hand back a downscaled data URL.
+function readLogoFile(file, cb) {
+  if (!file) { cb(null); return; }
+  const reader = new FileReader();
+  reader.onload = e => downscaleDataUrl(e.target.result, cb);
+  reader.onerror = () => cb(null);
+  reader.readAsDataURL(file);
+}
+
+// Human-readable size of the current sync payload.
+function payloadSizeLabel() {
+  try {
+    const bytes = new Blob([JSON.stringify(buildSavePayload())]).size;
+    const mb = bytes / 1048576;
+    return (mb >= 1 ? mb.toFixed(2) + ' MB' : Math.round(bytes / 1024) + ' KB');
+  } catch (e) { return 'unknown'; }
+}
+
+function refreshPayloadSize() {
+  const el = document.getElementById('payload-size');
+  if (!el) return;
+  const label = payloadSizeLabel();
+  el.textContent = label;
+  const big = /MB/.test(label) && parseFloat(label) >= 1;
+  el.style.color = big ? 'var(--expense-red)' : 'var(--muted)';
+}
+
+// One-off pass over logos already stored at full resolution. Runs after load;
+// only touches images above LOGO_BIG_BYTES, and only flags a change if
+// something actually got smaller.
+function shrinkStoredLogos() {
+  const jobs = [];
+  const consider = (getter, setter) => {
+    const v = getter();
+    if (typeof v === 'string' && v.length > LOGO_BIG_BYTES) jobs.push({ getter, setter });
+  };
+  (bankAccounts || []).forEach(a => consider(() => a.logo, v => { a.logo = v; }));
+  (creditCards  || []).forEach(c => consider(() => c.logo, v => { c.logo = v; }));
+  (investments  || []).forEach(i => consider(() => i.logo, v => { i.logo = v; }));
+  Object.keys(LOGOS).forEach(k => consider(() => LOGOS[k], v => { LOGOS[k] = v; }));
+  if (!jobs.length) return;
+
+  let pending = jobs.length, shrank = 0;
+  jobs.forEach(job => {
+    const before = job.getter();
+    downscaleDataUrl(before, out => {
+      if (out && out.length < before.length) { job.setter(out); shrank++; }
+      if (--pending === 0 && shrank) {
+        console.info('Compressed ' + shrank + ' oversized logo(s)');
+        markDirty();
+        refreshPayloadSize();
+        setSyncStatus('idle');
+      }
+    });
+  });
+}
 
 // ─── UNSAVED CHANGES REVIEW ──────────────────────────────────────
 // Lets you see exactly what is pending on this device, and whether the Gist
@@ -6119,12 +6255,7 @@ function populateBankPresetSelect(selected) {
 function previewBankLogo(input) {
   const file = input.files[0];
   if (!file) { return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    bankModalLogoData = e.target.result;
-    refreshBankLogoPreview();
-  };
-  reader.readAsDataURL(file);
+  readLogoFile(file, data => { bankModalLogoData = data; refreshBankLogoPreview(); });
   input.value = ''; // allow re-selecting the same file later
 }
 
@@ -6712,14 +6843,12 @@ let customSourceImg = null;
 function previewCustomSource(input) {
   const file = input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    customSourceImg = e.target.result;
+  readLogoFile(file, data => {
+    customSourceImg = data;
     const prev = document.getElementById('exp-custom-src-preview');
     prev.style.display = 'flex';
     prev.innerHTML = '<img src="'+customSourceImg+'" style="width:20px;height:20px;border-radius:4px;object-fit:contain;background:#fff"> Logo ready';
-  };
-  reader.readAsDataURL(file);
+  });
 }
 
 function addCustomSource() {
@@ -7209,9 +7338,7 @@ let investModalLogoData = null;
 function previewInvestLogo(input) {
   const f = input && input.files && input.files[0];
   if (!f) return;
-  const reader = new FileReader();
-  reader.onload = e => { investModalLogoData = e.target.result; showInvestLogoPreview(investModalLogoData); };
-  reader.readAsDataURL(f);
+  readLogoFile(f, data => { investModalLogoData = data; showInvestLogoPreview(investModalLogoData); });
   input.value = '';
 }
 
@@ -8806,6 +8933,7 @@ function navTo(page) {
     const panels = document.getElementById('settings-panels');
     if (panels) panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
     syncSettingsUI();
+    refreshPayloadSize();
   }
   // Reopen section bodies after display change
   setTimeout(() => {
@@ -9430,6 +9558,13 @@ const BOOKING_STATUS = {
   confirmed: { label: 'Confirmed', color: 'var(--accent2)' },
   paid:      { label: 'Paid',      color: 'var(--income-green)' },
 };
+// Colour of the dollar figure in the bookings list. Green is reserved for
+// money actually received, so it never implies revenue that has not landed.
+const BOOKING_AMOUNT_COLOR = {
+  quoted:    'var(--muted)',
+  confirmed: 'var(--text)',
+  paid:      'var(--income-green)',
+};
 
 function renderBusiness() {
   const container = document.getElementById('business-content');
@@ -9441,6 +9576,12 @@ function renderBusiness() {
     .slice()
     .sort((a, b) => (a.day || 0) - (b.day || 0));
   const revenue = businessRevenueForMonth(yr, mo);
+  const pipeline = businessPipelineForMonth(yr, mo);
+  // Payments received this month, including gigs held in earlier months.
+  const payments = getBusinessPaymentsForMonth(yr, mo);
+  // Those whose event was not this month get their own rows in the list,
+  // so the section adds up to the revenue figure above it.
+  const inbound = payments.filter(b => !(b.yr === yr && b.mo === mo));
   const expenseTotalTop = businessExpensesForMonth(yr, mo);
   const netProfit = revenue - expenseTotalTop;
   const ytd = businessYTD(yr, mo);
@@ -9451,7 +9592,7 @@ function renderBusiness() {
     '<div class="rogers-meter">' +
       '<div class="rm-label">Revenue</div>' +
       '<div class="rm-value green">' + fmt(revenue) + '</div>' +
-      '<div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">' + bookings.length + ' booking' + (bookings.length === 1 ? '' : 's') + '</div>' +
+      '<div style="font-size:0.7em;color:var(--muted);font-family:var(--font-mono);margin-top:3px">' + payments.length + ' payment' + (payments.length === 1 ? '' : 's') + ' received</div>' +
     '</div>' +
     '<div class="rogers-meter">' +
       '<div class="rm-label">Expenses</div>' +
@@ -9474,12 +9615,13 @@ function renderBusiness() {
       '<div class="section-title"><div class="section-dot" style="background:var(--income-green)"></div>Revenue</div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
         '<div class="section-total" style="color:var(--income-green)">' + fmt(revenue) + '</div>' +
+        (pipeline > 0 ? '<div class="section-total" style="color:var(--muted);font-size:0.8em">+' + fmt(pipeline) + ' pending</div>' : '') +
         '<svg id="biz-revenue-body-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><polyline points="4 6 8 10 12 6"></polyline></svg>' +
       '</div>' +
     '</div>' +
     '<div class="section-body" id="biz-revenue-body" style="max-height:0;overflow:hidden">';
 
-  if (bookings.length === 0) {
+  if (bookings.length === 0 && inbound.length === 0) {
     html += '<div style="padding:24px 20px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:0.8em">No bookings yet for ' + monthName + '.<br>Add your first event below.</div>';
   } else {
     bookings.forEach(b => {
@@ -9497,7 +9639,7 @@ function renderBusiness() {
         }
       }
       const tipTxt = (b.tip && b.tip > 0)
-        ? '<span style="font-family:var(--font-mono);font-size:0.9em;color:var(--income-green);margin-left:6px">+' + fmt(b.tip) + ' tip</span>'
+        ? '<span style="font-family:var(--font-mono);font-size:0.9em;color:' + (b.status === 'paid' ? 'var(--income-green)' : 'var(--muted)') + ';margin-left:6px">+' + fmt(b.tip) + ' tip</span>'
         : '';
       const descHtml = (b.description && b.description.trim())
         ? '<div style="font-size:0.95em;color:var(--muted);margin-top:3px;white-space:pre-wrap">' + escapeHtml(b.description) + '</div>'
@@ -9519,9 +9661,41 @@ function renderBusiness() {
             '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>' +
           '</button>' +
         '</div>' +
-        '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--income-green);text-align:right;min-width:76px">' + fmt(parseFloat(b.amount) || 0) + '</div>' +
+        '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:' + (BOOKING_AMOUNT_COLOR[b.status] || BOOKING_AMOUNT_COLOR.quoted) + ';text-align:right;min-width:76px">' + fmt(parseFloat(b.amount) || 0) + '</div>' +
       '</div>';
     });
+  }
+
+  // Money received this month for gigs held in an earlier month. Without these
+  // rows the list would not add up to the revenue figure above it.
+  if (inbound.length) {
+    inbound
+      .slice()
+      .sort((a, b) => (a.paidDay || 0) - (b.paidDay || 0))
+      .forEach(b => {
+        const pm = bookingPaidMonth(b);
+        const recTxt = b.paidDay
+          ? 'received ' + MONTHS[pm.mo] + ' ' + b.paidDay + getDaySuffix(b.paidDay)
+          : 'received this month';
+        const evtTxt = (b.day !== undefined && b.day !== null)
+          ? 'event ' + MONTHS[b.mo] + ' ' + b.day + getDaySuffix(b.day) + ', ' + b.yr
+          : 'event ' + MONTHS[b.mo] + ' ' + b.yr;
+        html +=
+        '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
+          '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
+            '<div style="display:flex;align-items:center;gap:6px">' + escapeHtml(b.name || 'Untitled event') +
+              '<span style="font-size:0.6429em;background:var(--income-green);color:#111;border-radius:3px;padding:1px 5px">Paid</span>' +
+            '</div>' +
+            '<div style="font-family:var(--font-mono);font-size:0.9em;color:var(--muted)">' + recTxt + ' \u00b7 ' + evtTxt + '</div>' +
+          '</div>' +
+          '<div class="item-actions" style="opacity:1">' +
+            '<button class="icon-btn" onclick="openBookingModal(\'' + b.id + '\')" title="Edit booking">' +
+              '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>' +
+            '</button>' +
+          '</div>' +
+          '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--income-green);text-align:right;min-width:76px">' + fmt(parseFloat(b.amount) || 0) + '</div>' +
+        '</div>';
+      });
   }
   html += '</div></div>';
 
@@ -10840,13 +11014,11 @@ let cardModalLogoData = null;
 function previewCardLogo(input) {
   const f = input && input.files && input.files[0];
   if (!f) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    cardModalLogoData = e.target.result;
+  readLogoFile(f, data => {
+    cardModalLogoData = data;
     const prev = document.getElementById('add-card-logo-preview');
     if (prev) prev.innerHTML = '<img src="' + cardModalLogoData + '" style="width:34px;height:34px;object-fit:contain;border-radius:6px">';
-  };
-  reader.readAsDataURL(f);
+  });
 }
 
 function clearCardLogo() {
@@ -11102,6 +11274,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   syncUndoBtn();
   seedCleanState();
   syncDirtyUI();
+  setTimeout(shrinkStoredLogos, 1200);
 
   setTimeout(() => {
     ['income-body', 'expense-body'].forEach(id => {
