@@ -3843,16 +3843,29 @@ async function pullFromGist() {
     return parsed;
   }
 
-  // Content truncated (>1MB) or missing — fetch raw_url with cache-bust for full, fresh content
+  // Content truncated (>1MB) or missing — fetch raw_url for the full copy.
   if (!file.raw_url) throw new Error('Gist file is empty and no raw_url available');
   const rawUrl = file.raw_url.split('?')[0] + '?_=' + Date.now();
-  const rawRes = await fetch(rawUrl, {
-    headers: { 'Authorization': `Bearer ${gistToken()}` }
-  });
-  if (!rawRes.ok) throw new Error(`raw_url fetch failed: HTTP ${rawRes.status}`);
-  const rawContent = await rawRes.text();
-  if (!rawContent) throw new Error('Gist file is empty');
-  return JSON.parse(rawContent);
+  let rawContent = null, rawErr = '';
+  // Plain request first: the raw URL carries its own access hash, and the API
+  // bearer token is not valid on gist.githubusercontent.com.
+  for (const opts of [{}, { headers: { 'Authorization': `Bearer ${gistToken()}` } }]) {
+    try {
+      const rawRes = await fetch(rawUrl, opts);
+      if (!rawRes.ok) { rawErr = `raw_url HTTP ${rawRes.status}`; continue; }
+      const txt = await rawRes.text();
+      if (txt) { rawContent = txt; break; }
+      rawErr = 'raw_url returned an empty body';
+    } catch (e) {
+      rawErr = 'raw_url fetch blocked: ' + ((e && e.message) ? e.message : String(e));
+    }
+  }
+  if (!rawContent) throw new Error(rawErr || 'raw_url fetch failed');
+  try {
+    return JSON.parse(rawContent);
+  } catch (e) {
+    throw new Error('raw_url content was not valid JSON (' + rawContent.length + ' bytes)');
+  }
 }
 
 function saveGistConfig() {
@@ -3881,11 +3894,34 @@ function saveGistConfig() {
   });
 }
 
+// Reason the last pull failed, so the UI can say something specific instead
+// of blaming the connection for every possible fault.
+let lastGistError = '';
+
 async function loadFromGist() {
-  if (!gistConfigured()) return false;
+  if (!gistConfigured()) { lastGistError = 'Gist not configured on this device'; return false; }
+  lastGistError = '';
+  let saved;
+  // Phase 1: fetch. A failure here really is network/auth/404.
   try {
-    const saved = await pullFromGist();
-    if (!saved || !Object.keys(saved).length) return false;
+    saved = await pullFromGist();
+  } catch (e) {
+    lastGistError = (e && e.message) ? e.message : String(e);
+    // A genuine offline failure surfaces as a TypeError from fetch itself;
+    // anything else came back from GitHub and is worth reading literally.
+    if (/Load failed|NetworkError|Failed to fetch/i.test(lastGistError)) {
+      lastGistError = 'No response from GitHub (offline, or the request was blocked): ' + lastGistError;
+    }
+    console.warn('Gist fetch failed:', lastGistError, e && e.stack);
+    return false;
+  }
+  if (!saved || !Object.keys(saved).length) {
+    lastGistError = 'Gist fetched OK but budget-data.json was empty';
+    console.warn(lastGistError);
+    return false;
+  }
+  // Phase 2: apply. A failure here is a data/code fault, not the connection.
+  try {
     if (saved.expenses)        expenseAmounts = saved.expenses;
     if (saved.income)          incomeAmounts  = saved.income;
     if (saved.incomeAmountSchedule) incomeAmountSchedule = saved.incomeAmountSchedule;
@@ -3944,7 +3980,8 @@ async function loadFromGist() {
     if (typeof clearDirty === 'function') clearDirty();
     return true;
   } catch(e) {
-    console.warn('Gist load failed:', e.message, e.stack);
+    lastGistError = 'Data loaded but could not be applied: ' + ((e && e.message) ? e.message : String(e));
+    console.warn('Gist apply failed:', lastGistError, e && e.stack);
     return false;
   }
 }
@@ -4038,8 +4075,10 @@ async function handlePull() {
     setSyncStatus('ok', '✓ Syncing...');
     setTimeout(() => setSyncStatus('idle'), 2500);
   } else {
-    setSyncStatus('error', 'Could not pull — check connection');
-    setTimeout(() => setSyncStatus('idle'), 3000);
+    const why = lastGistError || 'unknown error';
+    setSyncStatus('error', 'Pull failed');
+    setTimeout(() => setSyncStatus('idle'), 4000);
+    alert('Could not pull from the Gist.\n\n' + why + '\n\nIf this mentions HTTP 401 the token is wrong or expired; 404 means the Gist ID is wrong. Both are editable under ☁️ Sync settings.');
   }
   btn.textContent = '↻';
   btn.disabled = false;
@@ -11098,8 +11137,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         setSyncStatus('ok', '\u2713 Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
       } else {
-        setSyncStatus('error', 'Sync failed \u2014 using local data');
-        setTimeout(() => setSyncStatus('idle'), 4000);
+        setSyncStatus('error', 'Sync failed: ' + (lastGistError || 'unknown'));
+        setTimeout(() => setSyncStatus('idle'), 6000);
       }
     } catch(err) {
       console.warn('Startup Gist sync failed:', err);
@@ -11215,8 +11254,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => setSyncStatus('idle'), 2500);
       } else {
         label.textContent = 'Sync failed';
-        setSyncStatus('error', 'Could not sync');
-        setTimeout(() => setSyncStatus('idle'), 3000);
+        setSyncStatus('error', 'Sync failed: ' + (lastGistError || 'unknown'));
+        setTimeout(() => setSyncStatus('idle'), 6000);
       }
     } else {
       label.textContent = 'Not logged in';
