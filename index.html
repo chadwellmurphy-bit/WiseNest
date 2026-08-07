@@ -351,6 +351,7 @@
   /* ── PAGES ──────────────────────────────────────────────── */
   .page { display: none; padding: 28px; }
   .page.active { display: block; }
+  .page.active#page-settings { display: block; min-height: 100%; box-sizing: border-box; }
 
   .app {
     /* legacy compat - used by some inner CSS refs */
@@ -1611,30 +1612,33 @@
   .undo-btn:not(:disabled):hover { border-color: var(--accent2); color: var(--accent2); background: rgba(91,138,255,.08); }
 
   /* ── HAMBURGER ─────────────────────────────────────────── */
-  /* Top-bar save: absent entirely when there is nothing to push, so it costs
-     no space at rest. Appears in accent fill the moment data changes, which
-     matters on the phone where the side panel's Save button is off-screen. */
+  /* Top-bar save. Always present so its position is learnable, but dormant —
+     it matches the neighbouring icon buttons until there is work to push,
+     then lights up in accent. Lives where the gear used to be; Settings
+     moved into the side panel under Tools. */
   .topsave-btn {
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    color: #0f0f11;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
     width: 32px; height: 32px;
     border-radius: 8px; cursor: pointer;
-    display: none; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     padding: 0; flex-shrink: 0;
-    transition: background .15s, border-color .15s, color .15s;
+    transition: background .18s, border-color .18s, color .18s, box-shadow .18s;
   }
-  .topsave-btn.show { display: flex; animation: topsave-pop .18s ease-out; }
-  .topsave-btn:hover { background: #d8ff55; border-color: #d8ff55; }
+  .topsave-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .topsave-btn.show {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0f0f11;
+    box-shadow: 0 0 0 3px rgba(200,245,62,0.14);
+  }
+  .topsave-btn.show:hover { background: #d8ff55; border-color: #d8ff55; color: #0f0f11; }
   .topsave-btn.busy {
     background: var(--surface2); border-color: var(--border);
-    color: var(--muted); cursor: default;
+    color: var(--muted); cursor: default; box-shadow: none;
   }
   .topsave-btn.busy svg { animation: topsave-spin 1s linear infinite; }
-  @keyframes topsave-pop {
-    from { opacity: 0; transform: scale(0.75); }
-    to   { opacity: 1; transform: scale(1); }
-  }
   @keyframes topsave-spin { to { transform: rotate(360deg); } }
 
   .hamburger-btn {
@@ -1650,29 +1654,16 @@
   body.nav-slideover .hamburger-btn { display: flex; }
 
   /* ── SETTINGS DRAWER ───────────────────────────────────── */
-  .settings-overlay {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.5);
-    backdrop-filter: blur(4px);
-    z-index: 800;
-    opacity: 0; pointer-events: none;
-    transition: opacity .25s;
-  }
-  .settings-overlay.open { opacity: 1; pointer-events: all; }
-  .settings-drawer {
-    position: fixed; top: 0; right: 0; bottom: 0;
-    width: 340px; max-width: 92vw;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    z-index: 801;
-    display: flex; flex-direction: column;
-    transform: translateX(100%);
-    transition: transform .28s cubic-bezier(.4,0,.2,1);
-    overflow: hidden;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .settings-overlay.open .settings-drawer { transform: none; }
+  /* Settings is a normal page now, not a right-hand drawer. The panel
+     slider is reused as-is; these overrides just undo the drawer's
+     fixed-height flex context. */
+  #page-settings { padding: 0; }
+  #page-settings .settings-panels { align-items: stretch; min-height: 100%; }
+  #page-settings .settings-panel { overflow-y: visible; }
+  /* Match the 28px gutter every other page uses, and let the content run the
+     full width of the page rather than sitting in a narrow drawer column. */
+  #page-settings .settings-head { padding: 24px 28px; }
+  #page-settings .settings-body { padding: 24px 28px; max-width: none; }
 
   /* Settings panels — slide left/right */
   .settings-panels {
@@ -2308,6 +2299,11 @@
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="12" rx="1.5"></rect><line x1="5" y1="1" x2="5" y2="5"></line><line x1="11" y1="1" x2="11" y2="5"></line><line x1="1" y1="8" x2="15" y2="8"></line></svg></span>
       Calendar
     </button>
+
+    <button class="nav-item" onclick="navTo('settings')" id="nav-settings">
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span>
+      Settings
+    </button>
   </div>
 
   <div class="nav-footer">
@@ -2341,9 +2337,6 @@
       <button id="undo-btn" class="undo-btn" onclick="performUndo()" title="Undo last change (⌘Z)" style="opacity: 0.3; cursor: not-allowed;" disabled="">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7H11a4 4 0 0 1 0 8H7"></path><path d="M3 7L6 4M3 7L6 10"></path></svg>
       </button>
-      <button id="topbar-save-btn" class="topsave-btn" onclick="handleSave()" title="Save unsaved changes" aria-label="Save unsaved changes">
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg>
-      </button>
     </div>
 
     <div class="top-bar-right">
@@ -2376,11 +2369,8 @@
           <line x1="3" y1="10" x2="21" y2="10"></line>
         </svg>
       </button>
-      <button class="gear-btn" onclick="openSettings()" title="Settings">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
+      <button id="topbar-save-btn" class="topsave-btn" onclick="handleSave()" title="Save" aria-label="Save">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg>
       </button>
     </div>
   </div>
@@ -2715,6 +2705,251 @@
     <div id="calendar-body"></div>
   </div>
   </div><!-- /page-calendar -->
+
+  <div class="page" id="page-settings">
+
+    <!-- ── MAIN settings page ── -->
+    <div class="settings-panels" id="settings-panels">
+      <div class="settings-panel" id="settings-panel-main">
+        <div class="settings-head">
+          <h2>Settings</h2>
+        </div>
+        <div class="settings-body">
+
+          <!-- Display — navigates to sub-page -->
+          <div class="settings-group">
+            <div class="settings-group-label">Appearance</div>
+            <div class="settings-nav-row" onclick="openSettingsSubPage('sidepanel')">
+              <div>
+                <div class="setting-label">Side Panel</div>
+                <div class="setting-sub">Panel mode, balances &amp; visibility</div>
+              </div>
+              <span class="chevron">›</span>
+            </div>
+            <div class="settings-nav-row" onclick="openSettingsSubPage('display')">
+              <div>
+                <div class="setting-label">Display &amp; Text</div>
+                <div class="setting-sub">Theme, density, font size &amp; style</div>
+              </div>
+              <span class="chevron">›</span>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Calendar</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Default view</div></div>
+              <select class="setting-select" id="s-cal-default" onchange="applySettings()">
+                <option value="month">Month</option>
+                <option value="week">Week</option>
+                <option value="day">Day</option>
+                <option value="year">Year</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Week starts on</div></div>
+              <select class="setting-select" id="s-week-start" onchange="applySettings()">
+                <option value="0">Sunday</option>
+                <option value="1">Monday</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Business</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Show business section</div>
+                <div class="setting-sub">Track bookings, expenses &amp; profit for a business</div>
+              </div>
+              <label class="toggle" style="flex-shrink:0">
+                <input type="checkbox" id="s-business-enabled" onchange="applySettings()">
+                <div class="toggle-track"></div>
+              </label>
+            </div>
+            <div class="setting-row" id="s-business-name-row">
+              <div style="flex:1">
+                <div class="setting-label">Business name</div>
+                <div class="setting-sub">Shown in the side panel &amp; page title</div>
+              </div>
+              <input type="text" id="s-business-name" placeholder="Your business name" onchange="applySettings()" oninput="applySettings()"
+                style="flex-shrink:0;width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:0.95em;padding:8px 10px">
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Dashboard Tiles</div>
+            <div class="setting-row" style="border:none;padding-bottom:4px">
+              <div class="setting-sub">Choose which tiles appear on your dashboard.</div>
+            </div>
+            <div id="s-tile-toggles" style="display:flex;flex-direction:column;gap:2px"></div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Highlights</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Due-soon warning</div>
+                <div class="setting-sub">Show ⏱ badge on payments due within N days</div>
+              </div>
+              <label class="toggle" style="flex-shrink:0">
+                <input type="checkbox" id="s-due-soon-enabled" checked="" onchange="applySettings()">
+                <div class="toggle-track"></div>
+              </label>
+            </div>
+            <div class="setting-row" id="s-due-soon-row">
+              <div>
+                <div class="setting-label">Warning window</div>
+                <div class="setting-sub">Days before due date to show badge</div>
+              </div>
+              <select class="setting-select" id="s-due-soon" onchange="applySettings()">
+                <option value="1">1 day</option>
+                <option value="3">3 days</option>
+                <option value="5" selected="">5 days</option>
+                <option value="7">7 days</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Data</div>
+            <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
+              <div class="setting-label">Backup</div>
+              <div class="setting-sub">Save a snapshot of all your data as a file, or restore one.</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onclick="exportDataFile()" style="background:var(--accent);color:#111;border:none;border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;cursor:pointer">Export backup</button>
+                <label style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;cursor:pointer;color:var(--text)">
+                  Import backup…
+                  <input type="file" accept="application/json,.json" style="display:none" onchange="importDataFile(this)">
+                </label>
+              </div>
+            </div>
+            <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
+              <div class="setting-label">Reset to defaults</div>
+              <div class="setting-sub">Clears all edits. Cannot be undone.</div>
+              <button class="reset-btn" onclick="confirmReset()">Reset all data…</button>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">About</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Version</div>
+                <div class="setting-sub">When this app file was last updated</div>
+              </div>
+              <div id="s-app-version" style="font-family:var(--font-mono);font-size:0.8em;color:var(--muted);flex-shrink:0"></div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /settings-panel-main -->
+
+      <!-- ── SIDE PANEL sub-page ── -->
+      <div class="settings-panel" id="settings-panel-sidepanel">
+        <div class="settings-head">
+          <button class="settings-back" onclick="closeSettingsSubPage()">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1L3 5l4 4"/></svg>
+            Settings
+          </button>
+          <h2 style="font-family:var(--font-serif);font-size:1.2857em;letter-spacing:-.02em">Side Panel</h2>
+          <span style="width:30px;flex-shrink:0"></span>
+        </div>
+        <div class="settings-body">
+
+          <div class="settings-group">
+            <div class="settings-group-label">Panel Mode</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Display mode</div>
+                <div class="setting-sub">Fixed always-on or slide over</div>
+              </div>
+              <select class="setting-select" id="s-panel-mode" onchange="applySettings()">
+                <option value="fixed">Fixed open</option>
+                <option value="slideover">Slide-over</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Balance Visibility</div>
+            <div class="setting-sub" style="margin-bottom:12px;color:var(--muted);font-size:0.8571em">Show or hide the amounts displayed next to each nav item</div>
+            <div id="s-badge-toggles" style="display:flex;flex-direction:column;gap:2px"></div>
+          </div>
+
+        </div>
+      </div><!-- /settings-panel-sidepanel -->
+
+      <!-- ── DISPLAY & TYPOGRAPHY sub-page ── -->
+      <div class="settings-panel" id="settings-panel-display">
+        <div class="settings-head">
+          <button class="settings-back" onclick="closeSettingsSubPage()">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1L3 5l4 4"/></svg>
+            Settings
+          </button>
+          <h2 style="font-family:var(--font-serif);font-size:1.2857em;letter-spacing:-.02em">Display &amp; Text</h2>
+          <span style="width:30px;flex-shrink:0"></span>
+        </div>
+        <div class="settings-body">
+
+          <div class="settings-group">
+            <div class="settings-group-label">Display</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Theme</div></div>
+              <select class="setting-select" id="s-theme-2" onchange="applySettings()">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Row density</div>
+                <div class="setting-sub">Compact rows save space</div>
+              </div>
+              <select class="setting-select" id="s-density-2" onchange="applySettings()">
+                <option value="normal">Normal</option>
+                <option value="compact">Compact</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-label">Text</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Text size</div>
+                <div class="setting-sub">Base font size for the app</div>
+              </div>
+              <select class="setting-select" id="s-font-size-2" onchange="applySettings()">
+                <option value="medium">Small — 14px</option>
+                <option value="medium2">Medium — 15px</option>
+                <option value="large" selected="">Default — 16px</option>
+                <option value="large2">Large — 17px</option>
+                <option value="xlarge">X-Large — 18px</option>
+                <option value="xlarge2">XX-Large — 20px</option>
+                <option value="xxlarge">XXX-Large — 22px</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Font style</div>
+                <div class="setting-sub">Body typeface throughout the app</div>
+              </div>
+              <select class="setting-select" id="s-font-style-2" onchange="applySettings()">
+                <option value="sans" selected="">DM Sans</option>
+                <option value="mono">DM Mono</option>
+                <option value="serif">DM Serif</option>
+                <option value="system">System UI</option>
+                <option value="rounded">Rounded</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /settings-panel-display -->
+
+    </div><!-- /settings-panels -->
+  </div><!-- /page-settings -->
 
 </div><!-- /main-content -->
 </div><!-- /shell -->
@@ -8183,7 +8418,7 @@ const PAGE_TITLES = {
   summary: 'Dashboard', income: 'Money In', expenses: 'Money Out',
   debt: 'Debt', investments: 'Investments', calendar: 'Calendar',
   creditcards: 'Credit Cards', bankaccounts: 'Bank Accounts',
-  mortgage: 'Mortgage', business: 'My Business'
+  mortgage: 'Mortgage', business: 'My Business', settings: 'Settings'
 };
 
 function navTo(page) {
@@ -8211,6 +8446,12 @@ function navTo(page) {
   if (page === 'mortgage') renderMortgagePage();
   // Trigger business render when switching to it
   if (page === 'business') renderBusiness();
+  // Settings: always land on the top level with fresh control values
+  if (page === 'settings') {
+    const panels = document.getElementById('settings-panels');
+    if (panels) panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
+    syncSettingsUI();
+  }
   // Reopen section bodies after display change
   setTimeout(() => {
     ['income-body','expense-body'].forEach(id => {
@@ -8396,55 +8637,13 @@ let appSettings = {
   businessName:    '',    // user-defined business name
 };
 
-function openSettings() {
-  const panels = document.getElementById('settings-panels');
-  if (panels) panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
-  syncSettingsUI();
-  document.getElementById('settings-overlay').classList.add('open');
-}
-function closeSettings() {
-  document.getElementById('settings-overlay').classList.remove('open');
-}
-function settingsOverlayClick(e) {
-  if (e.target === document.getElementById('settings-overlay')) closeSettings();
-}
+// Settings is a page under Tools in the side panel; these remain as
+// entry points for any caller that still asks for it by name.
+function openSettings() { navTo('settings'); }
+function closeSettings() { navTo('summary'); }
 
 // Swipe-right-to-close for settings drawer
-(function initSettingsSwipe() {
-  let startX = 0, startY = 0, dragging = false;
-  document.addEventListener('touchstart', e => {
-    const drawer = document.getElementById('settings-overlay');
-    if (!drawer || !drawer.classList.contains('open')) return;
-    const t = e.touches[0];
-    // Only start swipe if finger begins inside the drawer
-    const drawerEl = drawer.querySelector('.settings-drawer');
-    if (drawerEl && drawerEl.contains(e.target)) {
-      startX = t.clientX; startY = t.clientY; dragging = true;
-    }
-  }, { passive: true });
-  document.addEventListener('touchmove', e => {
-    if (!dragging) return;
-    const t = e.touches[0];
-    const dx = t.clientX - startX;
-    const dy = Math.abs(t.clientY - startY);
-    // Only treat as horizontal swipe if more horizontal than vertical
-    if (dx > 0 && dx > dy) {
-      const drawerEl = document.querySelector('.settings-drawer');
-      if (drawerEl) drawerEl.style.transform = `translateX(${dx}px)`;
-    }
-  }, { passive: true });
-  document.addEventListener('touchend', e => {
-    if (!dragging) return;
-    dragging = false;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - startX;
-    const drawerEl = document.querySelector('.settings-drawer');
-    if (drawerEl) {
-      drawerEl.style.transform = '';
-      if (dx > 80) closeSettings();
-    }
-  }, { passive: true });
-})();
+// Settings drawer swipe-to-close removed: Settings is a page now.
 function openSettingsSubPage(name) {
   const panels = document.getElementById('settings-panels');
   panels.classList.remove('show-sub-sidepanel', 'show-sub-display');
@@ -11110,253 +11309,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 <div id="cal-tooltip" style="display: none; left: 422.141px; top: 354px;"></div>
 <!-- ══ SETTINGS DRAWER ══════════════════════════════════════ -->
-<div class="settings-overlay" id="settings-overlay" onclick="settingsOverlayClick(event)">
-  <div class="settings-drawer">
-
-    <!-- ── MAIN settings page ── -->
-    <div class="settings-panels" id="settings-panels">
-      <div class="settings-panel" id="settings-panel-main">
-        <div class="settings-head">
-          <h2>Settings</h2>
-          <button class="settings-close" onclick="closeSettings()">✕</button>
-        </div>
-        <div class="settings-body">
-
-          <!-- Display — navigates to sub-page -->
-          <div class="settings-group">
-            <div class="settings-group-label">Appearance</div>
-            <div class="settings-nav-row" onclick="openSettingsSubPage('sidepanel')">
-              <div>
-                <div class="setting-label">Side Panel</div>
-                <div class="setting-sub">Panel mode, balances &amp; visibility</div>
-              </div>
-              <span class="chevron">›</span>
-            </div>
-            <div class="settings-nav-row" onclick="openSettingsSubPage('display')">
-              <div>
-                <div class="setting-label">Display &amp; Text</div>
-                <div class="setting-sub">Theme, density, font size &amp; style</div>
-              </div>
-              <span class="chevron">›</span>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Calendar</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Default view</div></div>
-              <select class="setting-select" id="s-cal-default" onchange="applySettings()">
-                <option value="month">Month</option>
-                <option value="week">Week</option>
-                <option value="day">Day</option>
-                <option value="year">Year</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Week starts on</div></div>
-              <select class="setting-select" id="s-week-start" onchange="applySettings()">
-                <option value="0">Sunday</option>
-                <option value="1">Monday</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Business</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Show business section</div>
-                <div class="setting-sub">Track bookings, expenses &amp; profit for a business</div>
-              </div>
-              <label class="toggle" style="flex-shrink:0">
-                <input type="checkbox" id="s-business-enabled" onchange="applySettings()">
-                <div class="toggle-track"></div>
-              </label>
-            </div>
-            <div class="setting-row" id="s-business-name-row">
-              <div style="flex:1">
-                <div class="setting-label">Business name</div>
-                <div class="setting-sub">Shown in the side panel &amp; page title</div>
-              </div>
-              <input type="text" id="s-business-name" placeholder="Your business name" onchange="applySettings()" oninput="applySettings()"
-                style="flex-shrink:0;width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:0.95em;padding:8px 10px">
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Dashboard Tiles</div>
-            <div class="setting-row" style="border:none;padding-bottom:4px">
-              <div class="setting-sub">Choose which tiles appear on your dashboard.</div>
-            </div>
-            <div id="s-tile-toggles" style="display:flex;flex-direction:column;gap:2px"></div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Highlights</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Due-soon warning</div>
-                <div class="setting-sub">Show ⏱ badge on payments due within N days</div>
-              </div>
-              <label class="toggle" style="flex-shrink:0">
-                <input type="checkbox" id="s-due-soon-enabled" checked="" onchange="applySettings()">
-                <div class="toggle-track"></div>
-              </label>
-            </div>
-            <div class="setting-row" id="s-due-soon-row">
-              <div>
-                <div class="setting-label">Warning window</div>
-                <div class="setting-sub">Days before due date to show badge</div>
-              </div>
-              <select class="setting-select" id="s-due-soon" onchange="applySettings()">
-                <option value="1">1 day</option>
-                <option value="3">3 days</option>
-                <option value="5" selected="">5 days</option>
-                <option value="7">7 days</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Data</div>
-            <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
-              <div class="setting-label">Backup</div>
-              <div class="setting-sub">Save a snapshot of all your data as a file, or restore one.</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button onclick="exportDataFile()" style="background:var(--accent);color:#111;border:none;border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;cursor:pointer">Export backup</button>
-                <label style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:var(--font-sans);font-size:0.8571em;font-weight:600;cursor:pointer;color:var(--text)">
-                  Import backup…
-                  <input type="file" accept="application/json,.json" style="display:none" onchange="importDataFile(this)">
-                </label>
-              </div>
-            </div>
-            <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
-              <div class="setting-label">Reset to defaults</div>
-              <div class="setting-sub">Clears all edits. Cannot be undone.</div>
-              <button class="reset-btn" onclick="confirmReset()">Reset all data…</button>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">About</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Version</div>
-                <div class="setting-sub">When this app file was last updated</div>
-              </div>
-              <div id="s-app-version" style="font-family:var(--font-mono);font-size:0.8em;color:var(--muted);flex-shrink:0"></div>
-            </div>
-          </div>
-
-        </div>
-      </div><!-- /settings-panel-main -->
-
-      <!-- ── SIDE PANEL sub-page ── -->
-      <div class="settings-panel" id="settings-panel-sidepanel">
-        <div class="settings-head">
-          <button class="settings-back" onclick="closeSettingsSubPage()">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1L3 5l4 4"/></svg>
-            Settings
-          </button>
-          <h2 style="font-family:var(--font-serif);font-size:1.2857em;letter-spacing:-.02em">Side Panel</h2>
-          <button class="settings-close" onclick="closeSettings()">✕</button>
-        </div>
-        <div class="settings-body">
-
-          <div class="settings-group">
-            <div class="settings-group-label">Panel Mode</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Display mode</div>
-                <div class="setting-sub">Fixed always-on or slide over</div>
-              </div>
-              <select class="setting-select" id="s-panel-mode" onchange="applySettings()">
-                <option value="fixed">Fixed open</option>
-                <option value="slideover">Slide-over</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Balance Visibility</div>
-            <div class="setting-sub" style="margin-bottom:12px;color:var(--muted);font-size:0.8571em">Show or hide the amounts displayed next to each nav item</div>
-            <div id="s-badge-toggles" style="display:flex;flex-direction:column;gap:2px"></div>
-          </div>
-
-        </div>
-      </div><!-- /settings-panel-sidepanel -->
-
-      <!-- ── DISPLAY & TYPOGRAPHY sub-page ── -->
-      <div class="settings-panel" id="settings-panel-display">
-        <div class="settings-head">
-          <button class="settings-back" onclick="closeSettingsSubPage()">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1L3 5l4 4"/></svg>
-            Settings
-          </button>
-          <h2 style="font-family:var(--font-serif);font-size:1.2857em;letter-spacing:-.02em">Display &amp; Text</h2>
-          <button class="settings-close" onclick="closeSettings()">✕</button>
-        </div>
-        <div class="settings-body">
-
-          <div class="settings-group">
-            <div class="settings-group-label">Display</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Theme</div></div>
-              <select class="setting-select" id="s-theme-2" onchange="applySettings()">
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Row density</div>
-                <div class="setting-sub">Compact rows save space</div>
-              </div>
-              <select class="setting-select" id="s-density-2" onchange="applySettings()">
-                <option value="normal">Normal</option>
-                <option value="compact">Compact</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-label">Text</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Text size</div>
-                <div class="setting-sub">Base font size for the app</div>
-              </div>
-              <select class="setting-select" id="s-font-size-2" onchange="applySettings()">
-                <option value="medium">Small — 14px</option>
-                <option value="medium2">Medium — 15px</option>
-                <option value="large" selected="">Default — 16px</option>
-                <option value="large2">Large — 17px</option>
-                <option value="xlarge">X-Large — 18px</option>
-                <option value="xlarge2">XX-Large — 20px</option>
-                <option value="xxlarge">XXX-Large — 22px</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">Font style</div>
-                <div class="setting-sub">Body typeface throughout the app</div>
-              </div>
-              <select class="setting-select" id="s-font-style-2" onchange="applySettings()">
-                <option value="sans" selected="">DM Sans</option>
-                <option value="mono">DM Mono</option>
-                <option value="serif">DM Serif</option>
-                <option value="system">System UI</option>
-                <option value="rounded">Rounded</option>
-              </select>
-            </div>
-          </div>
-
-        </div>
-      </div><!-- /settings-panel-display -->
-
-    </div><!-- /settings-panels -->
-  </div><!-- /settings-drawer -->
-</div>
 
 <!-- PAY EDIT MODAL -->
 <div class="modal-overlay" id="pay-edit-overlay" onclick="closePayEdit(event)">
