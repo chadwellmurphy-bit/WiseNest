@@ -1209,11 +1209,14 @@
     gap: 10px;
     margin-top: 24px;
   }
+  /* Blue, deliberately NOT the accent lime used by Save-to-Gist. These
+     buttons commit a change into memory; only the top-bar/panel Save pushes
+     to the Gist, so they must not look like the same action. */
   .btn-primary {
     flex: 1;
     padding: 10px;
-    background: var(--accent);
-    color: #0f0f11;
+    background: var(--accent2);
+    color: #ffffff;
     border: none;
     border-radius: 8px;
     font-family: var(--font-sans);
@@ -1222,7 +1225,7 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-primary:hover { background: #d8ff55; }
+  .btn-primary:hover { background: #7ba1ff; }
   .btn-secondary {
     padding: 10px 16px;
     background: transparent;
@@ -3006,7 +3009,7 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveIncomeModal()">Save</button>
+      <button class="btn-primary" onclick="saveIncomeModal()">Confirm</button>
       <button class="btn-secondary" onclick="closeIncomeModal()">Cancel</button>
     </div>
   </div>
@@ -10984,7 +10987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </button>
       <div style="display:flex;gap:10px;margin-left:auto">
         <button class="btn-secondary" onclick="closeExpenseModal()">Cancel</button>
-        <button class="btn-primary" style="flex:none;padding:10px 20px" onclick="saveExpenseModal()">Save</button>
+        <button class="btn-primary" style="flex:none;padding:10px 20px" onclick="saveExpenseModal()">Confirm</button>
       </div>
     </div>
   </div>
@@ -11055,7 +11058,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     </div>
     <div class="modal-actions" style="flex-wrap:wrap;gap:8px">
-      <button class="btn-primary" onclick="saveDebtModal()">Save</button>
+      <button class="btn-primary" onclick="saveDebtModal()">Confirm</button>
       <button class="btn-secondary" onclick="closeDebtModal()">Cancel</button>
       <button class="btn-secondary" id="debt-modal-delete-btn" onclick="debtModalDelete()" style="display:none;margin-left:auto;color:var(--expense-red);border-color:var(--expense-red)">Delete</button>
     </div>
@@ -11128,7 +11131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveInvestModal()">Save</button>
+      <button class="btn-primary" onclick="saveInvestModal()">Confirm</button>
       <button class="btn-secondary" onclick="closeInvestModal()">Cancel</button>
     </div>
   </div>
@@ -11179,7 +11182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveBankModal()">Save</button>
+      <button class="btn-primary" onclick="saveBankModal()">Confirm</button>
       <button class="btn-secondary" onclick="closeBankModal()">Cancel</button>
     </div>
     <div id="bank-modal-delete-btn" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
@@ -11299,7 +11302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn-primary" onclick="saveCat()">Save</button>
+        <button class="btn-primary" onclick="saveCat()">Confirm</button>
         <button class="btn-secondary" onclick="cancelCatEdit()">Cancel</button>
       </div>
     </div>
@@ -11333,7 +11336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <input type="hidden" id="pay-edit-id" value="chad">
     <input type="hidden" id="pay-edit-idx" value="1">
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveEditPay()">Save</button>
+      <button class="btn-primary" onclick="saveEditPay()">Confirm</button>
       <button class="btn-secondary" onclick="document.getElementById('pay-edit-overlay').classList.remove('open')">Cancel</button>
     </div>
     <button id="pay-edit-reset" class="reset-btn" style="margin-top:8px;display:none" onclick="clearEditPay(+document.getElementById('pay-edit-yr').value, +document.getElementById('pay-edit-mo').value, document.getElementById('pay-edit-id').value, +document.getElementById('pay-edit-idx').value)">
@@ -11415,7 +11418,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </label>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveBooking()">Save</button>
+      <button class="btn-primary" onclick="saveBooking()">Confirm</button>
       <button class="btn-secondary" onclick="closeBookingModal()">Cancel</button>
     </div>
     <button id="booking-delete-btn" class="reset-btn" style="margin-top:8px;display:none" onclick="confirmDeleteBooking(_editingBookingId)">Delete booking</button>
@@ -11473,7 +11476,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <select id="biz-expense-source" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveBizExpense()">Save</button>
+      <button class="btn-primary" onclick="saveBizExpense()">Confirm</button>
       <button class="btn-secondary" onclick="closeBizExpenseModal()">Cancel</button>
     </div>
     <button id="biz-expense-delete-btn" class="reset-btn" style="margin-top:8px;display:none" onclick="confirmDeleteBizExpense(_editingBizExpenseId)">Delete expense</button>
@@ -11549,7 +11552,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveAddCardModal()">Save</button>
+      <button class="btn-primary" onclick="saveAddCardModal()">Confirm</button>
       <button class="btn-secondary" onclick="closeAddCardModal()">Cancel</button>
     </div>
     <div id="add-card-delete-btn" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
@@ -11833,7 +11836,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <input type="date" id="mtg-asof" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
     </div>
     <div class="modal-actions">
-      <button class="btn-primary" onclick="saveMortgageModal()">Save</button>
+      <button class="btn-primary" onclick="saveMortgageModal()">Confirm</button>
       <button class="btn-secondary" onclick="closeMortgageModal()">Cancel</button>
     </div>
   </div>
