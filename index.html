@@ -1040,7 +1040,21 @@
   }
   .save-btn:hover { background: #d8ff55; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(200,245,62,0.3); }
   .save-btn:active { transform: translateY(0); }
-  .save-btn.saved { background: var(--income-green); }
+  /* Nothing to push: the button recedes to a quiet outline rather than
+     shouting in accent colour. Unsaved work restores the solid accent fill,
+     so "bright = you have work to save" needs no extra ornament. */
+  .save-btn.is-clean {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 9px 17px;
+  }
+  .save-btn.is-clean:hover {
+    background: var(--surface2);
+    color: var(--text);
+    box-shadow: none;
+  }
+  .save-btn.saved { background: var(--income-green); color: #0f0f11; border: none; padding: 10px 18px; }
   .save-btn svg { width: 14px; height: 14px; }
 
   /* ICON BUTTONS on line items */
@@ -1103,6 +1117,66 @@
     margin-bottom: 20px;
     letter-spacing: -0.02em;
   }
+
+  /* One-time <-> Recurring switch (business expense modal) */
+  .freq-switch {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 11px 12px; box-sizing: border-box;
+  }
+  .freq-opt {
+    font-family: var(--font-sans); font-size: 0.95em; color: var(--muted);
+    transition: color 0.15s; user-select: none;
+  }
+  .freq-opt.active { color: var(--text); font-weight: 600; }
+  .freq-hint {
+    margin-top: 6px; text-align: center;
+    font-family: var(--font-mono); font-size: 0.74em; color: var(--muted);
+  }
+
+  /* Inline day-of-month calendar picker (business expense modal) */
+  .daypick-btn {
+    width: 100%; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: var(--font-sans); font-size: 1.0em;
+    padding: 10px 12px; text-align: left; cursor: pointer;
+  }
+  .daypick-btn:hover { border-color: var(--muted); }
+  .daypick-btn.is-empty > span:first-child { color: var(--muted); }
+  .daypick-btn svg { flex-shrink: 0; color: var(--muted); }
+  .daypick-pop {
+    display: none; margin-top: 8px; padding: 10px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .daypick-pop.open { display: block; }
+  .daypick-head {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+    font-family: var(--font-mono); font-size: 0.72em; color: var(--muted);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .daypick-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .daypick-dow {
+    text-align: center; padding: 2px 0;
+    font-family: var(--font-mono); font-size: 0.66em; color: var(--muted);
+  }
+  .daypick-cell {
+    aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+    padding: 0; background: var(--surface); color: var(--text);
+    border: 1px solid transparent; border-radius: 6px;
+    font-family: var(--font-mono); font-size: 0.82em; cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .daypick-cell:hover { border-color: var(--accent); }
+  .daypick-cell.blank { background: transparent; cursor: default; }
+  .daypick-cell.today { border-color: var(--muted); }
+  .daypick-cell.sel { background: var(--accent); color: #111; border-color: var(--accent); }
+  .daypick-clear {
+    margin-top: 8px; width: 100%; padding: 7px;
+    background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); font-family: var(--font-mono); font-size: 0.74em; cursor: pointer;
+  }
+  .daypick-clear:hover { color: var(--text); border-color: var(--muted); }
 
   .form-field {
     margin-bottom: 16px;
@@ -1537,6 +1611,32 @@
   .undo-btn:not(:disabled):hover { border-color: var(--accent2); color: var(--accent2); background: rgba(91,138,255,.08); }
 
   /* ── HAMBURGER ─────────────────────────────────────────── */
+  /* Top-bar save: absent entirely when there is nothing to push, so it costs
+     no space at rest. Appears in accent fill the moment data changes, which
+     matters on the phone where the side panel's Save button is off-screen. */
+  .topsave-btn {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #0f0f11;
+    width: 32px; height: 32px;
+    border-radius: 8px; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    padding: 0; flex-shrink: 0;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .topsave-btn.show { display: flex; animation: topsave-pop .18s ease-out; }
+  .topsave-btn:hover { background: #d8ff55; border-color: #d8ff55; }
+  .topsave-btn.busy {
+    background: var(--surface2); border-color: var(--border);
+    color: var(--muted); cursor: default;
+  }
+  .topsave-btn.busy svg { animation: topsave-spin 1s linear infinite; }
+  @keyframes topsave-pop {
+    from { opacity: 0; transform: scale(0.75); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes topsave-spin { to { transform: rotate(360deg); } }
+
   .hamburger-btn {
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -2240,6 +2340,9 @@
       <div class="top-bar-title" id="page-title">Dashboard</div>
       <button id="undo-btn" class="undo-btn" onclick="performUndo()" title="Undo last change (⌘Z)" style="opacity: 0.3; cursor: not-allowed;" disabled="">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7H11a4 4 0 0 1 0 8H7"></path><path d="M3 7L6 4M3 7L6 10"></path></svg>
+      </button>
+      <button id="topbar-save-btn" class="topsave-btn" onclick="handleSave()" title="Save unsaved changes" aria-label="Save unsaved changes">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg>
       </button>
     </div>
 
@@ -3340,6 +3443,8 @@ async function loadFromGist() {
     DATA_KEYS.forEach(k => {
       try { localStorage.setItem(k, localPayload); } catch(e) {}
     });
+    // Local is now a copy of the Gist, so there is nothing unpushed left.
+    if (typeof clearDirty === 'function') clearDirty();
     return true;
   } catch(e) {
     console.warn('Gist load failed:', e.message, e.stack);
@@ -3404,11 +3509,18 @@ async function testGistConnection() {
 function setSyncStatus(state, msg) {
   const el = document.getElementById('sync-status');
   if (!el) return;
+  const dirty = (typeof dataDirty !== 'undefined') && dataDirty;
   const icons = { idle: '', syncing: '⏳', ok: '', error: '✗' };
   const colors = { idle: 'var(--text)', syncing: 'var(--text)', ok: 'var(--income-green)', error: 'var(--expense-red)' };
-  const defaults = { idle: gistConfigured() ? '☁️ Synced' : '☁️ Log in', syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' };
+  // At rest, the line reports whether anything is waiting to be pushed.
+  const idleText = dirty
+    ? '● Unsaved changes'
+    : (gistConfigured() ? '☁️ Synced' : '☁️ Log in');
+  const defaults = { idle: idleText, syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' };
   el.textContent = ((icons[state] ? icons[state] + ' ' : '') + (msg || defaults[state] || '')).trim();
-  el.style.color = colors[state] || 'var(--text)';
+  el.style.color = (state === 'idle' && dirty) ? 'var(--accent)' : (colors[state] || 'var(--text)');
+  // Transient states own the line until they clear; syncDirtyUI won't stomp them.
+  if (state === 'idle') delete el.dataset.busy; else el.dataset.busy = '1';
 }
 function updateSyncStatus(state, msg) { setSyncStatus(state, msg); }
 
@@ -3422,6 +3534,7 @@ async function handlePull() {
   if (ok) {
     renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
     renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
+    applyBusinessVisibility(); renderBusiness();
     setSyncStatus('ok', '✓ Syncing...');
     setTimeout(() => setSyncStatus('idle'), 2500);
   } else {
@@ -3449,6 +3562,7 @@ async function handleSave() {
     const setup = confirm('Gist sync is not configured. Set it up now for cross-device saving?\n\nClick Cancel to skip (data saved locally only).');
     if (setup) { showGistSetup(); return; }
     // local-only feedback
+    clearDirty();
     btn.classList.add('saved');
     btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg> Saved locally`;
     setTimeout(() => {
@@ -3462,8 +3576,11 @@ async function handleSave() {
   btn.disabled = true;
   btn.innerHTML = `⏳ Syncing…`;
   setSyncStatus('syncing');
+  setTopSaveBusy(true);
   try {
     await pushToGist();
+    setTopSaveBusy(false);
+    clearDirty();
     btn.classList.add('saved');
     btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg> Saved`;
     notif.textContent = '☁️ Saved ✓';
@@ -3477,6 +3594,7 @@ async function handleSave() {
       btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"/><path d="M11 1v4H5V1M5 9h6"/></svg> Save`;
     }, 2500);
   } catch(e) {
+    setTopSaveBusy(false);
     setSyncStatus('error', 'Sync failed: ' + e.message);
     btn.disabled = false;
     btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"/><path d="M11 1v4H5V1M5 9h6"/></svg> Save`;
@@ -3484,7 +3602,62 @@ async function handleSave() {
   }
 }
 
-function saveState() { /* no-op: use Save button */ }
+// ─── LOCAL AUTOSAVE + UNSAVED-CHANGES TRACKING ───────────────────
+// Every mutation writes the full payload to localStorage on a short debounce,
+// so an app reload, a Safari tab eviction or a crash can never lose work.
+// dataDirty tracks "local is ahead of the Gist" and survives reloads, so the
+// startup sync and pull-to-refresh can refuse to overwrite unpushed edits.
+const UNSAVED_KEY = APP_NS + ':unsaved';
+let dataDirty = (function () {
+  try { return localStorage.getItem(UNSAVED_KEY) === '1'; } catch (e) { return false; }
+})();
+let _saveStateTimer = null;
+
+// Write current in-memory state to localStorage immediately.
+function saveState() {
+  try {
+    const payloadStr = JSON.stringify(buildSavePayload());
+    DATA_KEYS.forEach(k => { try { localStorage.setItem(k, payloadStr); } catch (e) {} });
+  } catch (e) { console.warn('saveState error', e); }
+}
+
+// Flag unsaved-vs-Gist changes and schedule a local write.
+// Called from pushUndo(), which runs at the start of essentially every
+// mutating action; the debounce lets the mutation finish before we snapshot.
+function markDirty() {
+  dataDirty = true;
+  try { localStorage.setItem(UNSAVED_KEY, '1'); } catch (e) {}
+  if (_saveStateTimer) clearTimeout(_saveStateTimer);
+  _saveStateTimer = setTimeout(() => { _saveStateTimer = null; saveState(); }, 300);
+  syncDirtyUI();
+}
+
+// Local and remote now agree — drop the flag.
+function clearDirty() {
+  dataDirty = false;
+  try { localStorage.removeItem(UNSAVED_KEY); } catch (e) {}
+  syncDirtyUI();
+}
+
+// Amber dot on the Save button whenever there is unpushed work.
+// Spinner state on the top-bar save button while a push is in flight.
+function setTopSaveBusy(on) {
+  const topBtn = document.getElementById('topbar-save-btn');
+  if (!topBtn) return;
+  topBtn.classList.toggle('busy', !!on);
+  topBtn.disabled = !!on;
+}
+
+function syncDirtyUI() {
+  const btn = document.getElementById('save-btn');
+  if (btn) btn.classList.toggle('is-clean', !dataDirty);
+  // Mirror onto the top bar, which stays visible when the side panel is closed.
+  const topBtn = document.getElementById('topbar-save-btn');
+  if (topBtn) topBtn.classList.toggle('show', !!dataDirty);
+  // Refresh the sync line so it reads "Unsaved changes" the moment work exists.
+  const el = document.getElementById('sync-status');
+  if (el && !el.dataset.busy) setSyncStatus('idle');
+}
 
 function getExpenseAmount(id) {
   // Use the currently-viewed calendar month if available
@@ -5543,6 +5716,7 @@ function pushUndo() {
   undoStack.push(captureState());
   if (undoStack.length > UNDO_LIMIT) undoStack.shift();
   syncUndoBtn();
+  markDirty();
 }
 
 function performUndo() {
@@ -5876,7 +6050,8 @@ function addExpense() {
   document.getElementById('exp-modal-remove-fwd-btn').style.display = 'none';
   const repeatWrap = document.getElementById('exp-modal-repeat-wrap');
   repeatWrap.style.display = '';
-  document.getElementById('exp-modal-repeat').checked = true;
+  // New expenses default to this month only; flip the toggle on to make it recurring.
+  document.getElementById('exp-modal-repeat').checked = false;
   const repeatTitle = repeatWrap.querySelector('.exp-repeat-title');
   if (repeatTitle) repeatTitle.textContent = 'Repeat every month';
   const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
@@ -9355,6 +9530,90 @@ function confirmDeleteBooking(id) {
   renderCalendar();
 }
 
+// ── Frequency switch (business expense modal) ──
+// Toggle OFF (left) = one-time, the default for new expenses.
+// Toggle ON  (right) = recurring monthly.
+function syncBizFreqLabels() {
+  const cb = document.getElementById('biz-expense-freq');
+  if (!cb) return;
+  const recurring = cb.checked;
+  const oneEl = document.getElementById('biz-freq-onetime');
+  const recEl = document.getElementById('biz-freq-recurring');
+  const hint  = document.getElementById('biz-freq-hint');
+  if (oneEl) oneEl.classList.toggle('active', !recurring);
+  if (recEl) recEl.classList.toggle('active', recurring);
+  if (hint) {
+    hint.textContent = recurring
+      ? 'Repeats every month from ' + MONTHS[calMonth] + ' ' + calYear + ' forward'
+      : MONTHS[calMonth] + ' ' + calYear + ' only';
+  }
+}
+
+// ── Day-of-month calendar picker (business expense modal) ──
+// Backed by a hidden input so saveBizExpense() keeps reading the same field.
+
+// Write a day into the hidden input and refresh the button label.
+function setBizExpenseDay(day) {
+  const hidden = document.getElementById('biz-expense-day');
+  const label  = document.getElementById('biz-expense-day-label');
+  const btn    = document.getElementById('biz-expense-day-btn');
+  const d = parseInt(day) || null;
+  if (hidden) hidden.value = d ? String(d) : '';
+  if (label)  label.textContent = d ? (MONTHS[calMonth] + ' ' + d + getDaySuffix(d)) : 'Select a day';
+  if (btn)    btn.classList.toggle('is-empty', !d);
+  renderBizDayPicker();
+}
+
+// Build the month grid for the month currently being viewed.
+function renderBizDayPicker() {
+  const pop = document.getElementById('biz-expense-day-pop');
+  if (!pop) return;
+  const yr = calYear, mo = calMonth;
+  const dim   = new Date(yr, mo + 1, 0).getDate();
+  const first = new Date(yr, mo, 1).getDay();
+  const hidden = document.getElementById('biz-expense-day');
+  const sel = hidden ? (parseInt(hidden.value) || null) : null;
+  const today = new Date();
+  const isCurMo = today.getFullYear() === yr && today.getMonth() === mo;
+  const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  let h = '<div class="daypick-head"><span>' + MONTHS[mo] + ' ' + yr + '</span><span>tap a day</span></div>';
+  h += '<div class="daypick-grid">';
+  DOW.forEach(d => { h += '<div class="daypick-dow">' + d + '</div>'; });
+  for (let i = 0; i < first; i++) h += '<div class="daypick-cell blank"></div>';
+  for (let d = 1; d <= dim; d++) {
+    let cls = 'daypick-cell';
+    if (d === sel) cls += ' sel';
+    else if (isCurMo && d === today.getDate()) cls += ' today';
+    h += '<button type="button" class="' + cls + '" onclick="pickBizExpenseDay(' + d + ')">' + d + '</button>';
+  }
+  h += '</div>';
+  h += '<button type="button" class="daypick-clear" onclick="pickBizExpenseDay(null)">No specific day</button>';
+  pop.innerHTML = h;
+}
+
+function pickBizExpenseDay(day) {
+  setBizExpenseDay(day);
+  closeBizDayPicker();
+}
+
+// Expands inline rather than floating, so the modal's own scrolling can't clip it.
+function toggleBizDayPicker() {
+  const pop = document.getElementById('biz-expense-day-pop');
+  if (!pop) return;
+  if (pop.classList.contains('open')) { closeBizDayPicker(); return; }
+  renderBizDayPicker();
+  pop.classList.add('open');
+  setTimeout(() => {
+    try { pop.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+  }, 60);
+}
+
+function closeBizDayPicker() {
+  const pop = document.getElementById('biz-expense-day-pop');
+  if (pop) pop.classList.remove('open');
+}
+
 // ── Business expense add/edit modal ──
 let _editingBizExpenseId = null;
 
@@ -9374,11 +9633,14 @@ function openBizExpenseModal(id) {
   document.getElementById('biz-expense-name').value     = e ? (e.name || '') : '';
   document.getElementById('biz-expense-amount').value   = e ? (e.amount || '') : '';
   document.getElementById('biz-expense-category').value = e ? (e.category || 'Supplies') : 'Supplies';
-  // Frequency radio: monthly (recurring) vs one-time
-  const isOneTime = e ? !!e.oneTime : false;
-  document.getElementById('biz-expense-freq').value = isOneTime ? 'onetime' : 'monthly';
+  // Frequency switch: off = one-time (this month only), on = monthly recurring.
+  // New expenses default to one-time, since most business costs are one-offs.
+  const isOneTime = e ? !!e.oneTime : true;
+  document.getElementById('biz-expense-freq').checked = !isOneTime;
+  syncBizFreqLabels();
   document.getElementById('biz-expense-add-personal').checked = e ? !!e.addToPersonal : false;
-  document.getElementById('biz-expense-day').value = e ? (e.day || '') : '';
+  closeBizDayPicker();
+  setBizExpenseDay(e ? (e.day || null) : null);
   populateBizExpenseSources(e ? (e.source || '') : '');
   onBizExpensePersonalToggle();
   if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
@@ -9393,6 +9655,7 @@ function closeBizExpenseModal(e) {
   if (e && e.target !== document.getElementById('biz-expense-modal-overlay')) return;
   const overlay = document.getElementById('biz-expense-modal-overlay');
   if (overlay) overlay.classList.remove('open');
+  closeBizDayPicker();
   _editingBizExpenseId = null;
 }
 
@@ -9436,7 +9699,7 @@ function saveBizExpense() {
   const name     = document.getElementById('biz-expense-name').value.trim();
   const amount   = parseFloat(document.getElementById('biz-expense-amount').value) || 0;
   const category = document.getElementById('biz-expense-category').value || 'Other';
-  const oneTime  = document.getElementById('biz-expense-freq').value === 'onetime';
+  const oneTime  = !document.getElementById('biz-expense-freq').checked;
   const addToPersonal = document.getElementById('biz-expense-add-personal').checked;
   const day      = parseInt(document.getElementById('biz-expense-day').value) || null;
   const source   = document.getElementById('biz-expense-source').value || '';
@@ -10283,6 +10546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyBusinessVisibility();
   detectAppVersion();
   syncUndoBtn();
+  syncDirtyUI();
 
   setTimeout(() => {
     ['income-body', 'expense-body'].forEach(id => {
@@ -10300,15 +10564,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (t) document.getElementById('gist-token-input').value = t;
   if (g) document.getElementById('gist-id-input').value = g;
 
-  // Pull latest data from Gist on every load (stays logged in)
-  if (gistConfigured()) {
+  // Pull latest data from Gist on every load (stays logged in).
+  // Skipped when localStorage holds edits that were never pushed, otherwise
+  // the pull would silently replace them with the older Gist copy.
+  syncDirtyUI();
+  if (gistConfigured() && dataDirty) {
+    setSyncStatus('error', 'Unsaved changes \u2014 tap Save to push');
+  } else if (gistConfigured()) {
     setSyncStatus('syncing', 'Syncing\u2026');
     try {
       const ok = await loadFromGist();
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
         renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
-        applyBusinessVisibility();
+        applyBusinessVisibility(); renderBusiness();
         setSyncStatus('ok', '\u2713 Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
       } else {
@@ -10407,11 +10676,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     indicator.style.height = THRESHOLD + 'px';
     label.textContent = 'Syncing…';
 
+    // A pull overwrites in-memory state from the Gist. Refuse while there are
+    // edits that have not been pushed yet — this was silently eating new
+    // bookings and business expenses added since the last Save.
+    if (dataDirty) {
+      label.textContent = 'Unsaved changes';
+      setSyncStatus('error', 'Unsaved changes \u2014 tap Save first');
+      setTimeout(() => setSyncStatus('idle'), 3500);
+      setTimeout(reset, 900);
+      return;
+    }
+
     if (gistConfigured()) {
       const ok = await loadFromGist();
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
         renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
+        applyBusinessVisibility(); renderBusiness();
         label.textContent = '✓ Synced';
         setSyncStatus('ok', '✓ Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
@@ -11205,15 +11486,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       <select id="biz-expense-category" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
     </div>
     <div class="form-field">
-      <label>Day of month <span style="color:var(--muted);font-weight:400">(when it occurs)</span></label>
-      <input type="number" id="biz-expense-day" placeholder="1" min="1" max="31">
+      <label>Day of month</label>
+      <button type="button" id="biz-expense-day-btn" class="daypick-btn is-empty" onclick="toggleBizDayPicker()">
+        <span id="biz-expense-day-label">Select a day</span>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>
+      </button>
+      <input type="hidden" id="biz-expense-day">
+      <div class="daypick-pop" id="biz-expense-day-pop"></div>
     </div>
     <div class="form-field">
       <label>Frequency</label>
-      <select id="biz-expense-freq" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none">
-        <option value="monthly">Monthly (recurring)</option>
-        <option value="onetime">One-time (this month only)</option>
-      </select>
+      <div class="freq-switch">
+        <span class="freq-opt active" id="biz-freq-onetime">One-time</span>
+        <label class="toggle" style="flex-shrink:0">
+          <input type="checkbox" id="biz-expense-freq" onchange="syncBizFreqLabels()">
+          <div class="toggle-track"></div>
+        </label>
+        <span class="freq-opt" id="biz-freq-recurring">Recurring</span>
+      </div>
+      <div class="freq-hint" id="biz-freq-hint"></div>
     </div>
     <div class="setting-row" id="biz-expense-add-personal-row" style="padding:10px 0;border:none">
       <div style="flex:1">
