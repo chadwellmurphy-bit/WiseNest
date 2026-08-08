@@ -1221,6 +1221,29 @@
     transition: all 0.15s;
   }
   .btn-secondary:hover { color: var(--text); border-color: var(--text); }
+  /* Square icon-only variant, so Delete costs one glyph of width in a
+     four-button row instead of a whole word. */
+  .btn-icon-only { padding: 10px; gap: 0; flex: none; }
+  /* "End from this month" is neither destructive nor confirmatory — amber
+     keeps it distinct from both Delete red and Confirm blue. */
+  .btn-warn {
+    padding: 10px 14px;
+    background: transparent;
+    color: var(--debt-amber);
+    border: 1px solid rgba(255,176,46,.38);
+    border-radius: 8px;
+    font-family: var(--font-sans);
+    font-size: 0.9286em;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    white-space: nowrap;
+  }
+  .btn-warn:hover { background: rgba(255,176,46,.12); }
+
   .btn-danger {
     padding: 10px 14px;
     background: transparent;
@@ -6871,9 +6894,12 @@ function editExpense(id) {
   // Show delete button in edit mode
   document.getElementById('exp-modal-delete-btn').style.display = '';
   // Show the "End from this month" button
+  // The button now reads just "End"; the month it would take effect from is
+  // spelled out in the confirmation prompt instead.
   const removeFwdBtn = document.getElementById('exp-modal-remove-fwd-btn');
-  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  document.getElementById('exp-modal-remove-fwd-label').textContent = MONTH_NAMES[calMonth] + ' ' + calYear;
+  const MONTH_NAMES = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'];
+  removeFwdBtn.title = 'Stop this expense from ' + MONTH_NAMES[calMonth] + ' ' + calYear + ' forward';
   // Only show if the expense isn't already ended before or at this month
   const _item = budget.expenses.find(e => e.id === id);
   const alreadyEnded = _item && _item.endYr !== undefined &&
@@ -6959,9 +6985,10 @@ function expModalRemoveForward() {
   if (!expenseEditId) return;
   const item = budget.expenses.find(e => e.id === expenseEditId);
   if (!item) return;
-  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTH_NAMES = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'];
   const label = MONTH_NAMES[calMonth] + ' ' + calYear;
-  if (!confirm('End "' + item.name + '" from ' + label + ' onward?\n\nIt will no longer appear in this month or future months, but past months stay unchanged.')) return;
+  if (!confirm('End "' + item.name + '" from ' + label + '?\n\nIt will stop appearing from ' + label + ' onward. Earlier months keep their history.')) return;
   pushUndo();
   // Set end to the month BEFORE the current viewed month
   let endMo = calMonth - 1;
@@ -11557,19 +11584,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         </label>
       </div>
     </div>
-<div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <button id="exp-modal-delete-btn" class="btn-danger" style="display:none" onclick="expModalDelete()">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-        Delete
+<div class="modal-actions" style="gap:8px;align-items:center;flex-wrap:nowrap">
+      <button class="btn-primary" style="flex:1;padding:10px;min-width:0" onclick="saveExpenseModal()">Confirm</button>
+      <button class="btn-secondary" style="flex:none;padding:10px 14px;white-space:nowrap" onclick="closeExpenseModal()">Cancel</button>
+      <button id="exp-modal-delete-btn" class="btn-danger btn-icon-only" style="display:none" onclick="expModalDelete()" title="Delete this expense" aria-label="Delete this expense">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
       </button>
-      <button id="exp-modal-remove-fwd-btn" class="btn-danger" style="display:none;background:transparent;border:1px solid var(--debt-amber);color:var(--debt-amber)" onclick="expModalRemoveForward()" title="Hide this expense from this month forward, keeping past history intact">
+      <button id="exp-modal-remove-fwd-btn" class="btn-warn" style="display:none" onclick="expModalRemoveForward()" title="Stop this expense from this month forward, keeping past months intact">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h9M8 5l4 3-4 3"/><path d="M14 2v12" stroke-dasharray="2 2"/></svg>
-        End from <span id="exp-modal-remove-fwd-label"></span>
+        End
       </button>
-      <div style="display:flex;gap:10px;margin-left:auto">
-        <button class="btn-secondary" onclick="closeExpenseModal()">Cancel</button>
-        <button class="btn-primary" style="flex:none;padding:10px 20px" onclick="saveExpenseModal()">Confirm</button>
-      </div>
     </div>
   </div>
 </div>
