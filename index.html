@@ -9771,9 +9771,6 @@ function renderBusiness() {
           '<button class="icon-btn" onclick="openBookingModal(\'' + b.id + '\')" title="Edit booking">' +
             '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>' +
           '</button>' +
-          '<button class="icon-btn delete" onclick="confirmDeleteBooking(\'' + b.id + '\')" title="Delete booking">' +
-            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>' +
-          '</button>' +
         '</div>' +
         '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:' + (BOOKING_AMOUNT_COLOR[b.status] || BOOKING_AMOUNT_COLOR.quoted) + ';text-align:right;min-width:76px">' + fmt(parseFloat(b.amount) || 0) + '</div>' +
       '</div>';
@@ -9853,9 +9850,6 @@ function renderBusiness() {
         '<div class="item-actions" style="opacity:1">' +
           '<button class="icon-btn" onclick="openBizExpenseModal(\'' + e.id + '\')" title="Edit expense">' +
             '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>' +
-          '</button>' +
-          '<button class="icon-btn delete" onclick="confirmDeleteBizExpense(\'' + e.id + '\')" title="Delete expense">' +
-            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>' +
           '</button>' +
         '</div>' +
         '<div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--expense-red);text-align:right;min-width:76px">' + fmt(amt) + '</div>' +
@@ -10287,7 +10281,8 @@ function openBookingModal(id) {
   onBookingStatusChange();
   if (titleEl) titleEl.textContent = (b ? 'Edit Booking' : 'Add Booking') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
   const delBtn = document.getElementById('booking-delete-btn');
-  if (delBtn) delBtn.style.display = b ? 'block' : 'none';
+  // '' restores the class's own display:flex; 'block' would break the centring.
+  if (delBtn) delBtn.style.display = b ? '' : 'none';
 
   if (overlay) overlay.classList.add('open');
   setTimeout(() => { const el = document.getElementById('booking-name'); if (el) el.focus(); }, 100);
@@ -10447,7 +10442,8 @@ function openBizExpenseModal(id) {
   onBizExpensePersonalToggle();
   if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
   const delBtn = document.getElementById('biz-expense-delete-btn');
-  if (delBtn) delBtn.style.display = e ? 'block' : 'none';
+  // '' restores the class's own display:flex; 'block' would break the centring.
+  if (delBtn) delBtn.style.display = e ? '' : 'none';
 
   if (overlay) overlay.classList.add('open');
   setTimeout(() => { const el = document.getElementById('biz-expense-name'); if (el) el.focus(); }, 100);
@@ -12031,11 +12027,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="toggle-track"></div>
       </label>
     </div>
-    <div class="modal-actions">
-      <button class="btn-primary" onclick="saveBooking()">Confirm</button>
-      <button class="btn-secondary" onclick="closeBookingModal()">Cancel</button>
+    <div class="modal-actions" style="gap:8px;align-items:center;flex-wrap:nowrap">
+      <button class="btn-primary" style="flex:1;padding:10px;min-width:0" onclick="saveBooking()">Confirm</button>
+      <button class="btn-secondary" style="flex:none;padding:10px 16px;white-space:nowrap" onclick="closeBookingModal()">Cancel</button>
+      <button id="booking-delete-btn" class="btn-danger btn-icon-only" style="display:none" onclick="confirmDeleteBooking(_editingBookingId)" title="Delete this booking" aria-label="Delete this booking">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
+      </button>
     </div>
-    <button id="booking-delete-btn" class="reset-btn" style="margin-top:8px;display:none" onclick="confirmDeleteBooking(_editingBookingId)">Delete booking</button>
   </div>
 </div>
 <!-- BUSINESS EXPENSE MODAL -->
@@ -12085,11 +12083,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       <label>Payment source</label>
       <select id="biz-expense-source" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
     </div>
-    <div class="modal-actions">
-      <button class="btn-primary" onclick="saveBizExpense()">Confirm</button>
-      <button class="btn-secondary" onclick="closeBizExpenseModal()">Cancel</button>
+    <div class="modal-actions" style="gap:8px;align-items:center;flex-wrap:nowrap">
+      <button class="btn-primary" style="flex:1;padding:10px;min-width:0" onclick="saveBizExpense()">Confirm</button>
+      <button class="btn-secondary" style="flex:none;padding:10px 16px;white-space:nowrap" onclick="closeBizExpenseModal()">Cancel</button>
+      <button id="biz-expense-delete-btn" class="btn-danger btn-icon-only" style="display:none" onclick="confirmDeleteBizExpense(_editingBizExpenseId)" title="Delete this expense" aria-label="Delete this expense">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
+      </button>
     </div>
-    <button id="biz-expense-delete-btn" class="reset-btn" style="margin-top:8px;display:none" onclick="confirmDeleteBizExpense(_editingBizExpenseId)">Delete expense</button>
   </div>
 </div>
 <!-- ADD CREDIT CARD MODAL -->
