@@ -25,6 +25,9 @@
     /* The top bar is translucent over scrolling content, so it needs its own
        token rather than var(--bg): it must be theme-aware AND semi-opaque. */
     --topbar-bg: rgba(2,24,44,.94);
+    /* Pale mint used for investment values and trend charts. Hardcoded in 17
+       places until now, which made it invisible on the light theme. */
+    --invest-green: #a8f0cf;
     --logo-green: #75BC8D;
     --accent: #c8f53e;
     --accent2: #5b8aff;
@@ -809,7 +812,7 @@
     font-family:var(--font-mono);
     font-size: 1.0em;
     font-weight: 600;
-    color: #a8f0cf;
+    color: var(--invest-green);
   }
 
   /* INVESTMENT TREND MODAL */
@@ -853,10 +856,10 @@
     background: transparent; color: var(--muted); transition: all 0.15s;
   }
   .trend-tab.active {
-    background: #a8f0cf; color: #0a1f14; border-color: #a8f0cf;
+    background: var(--invest-green); color: #0a1f14; border-color: var(--invest-green);
   }
   .trend-tab.tt-active {
-    background: #a8f0cf; color: #0a1f14; border-color: #a8f0cf;
+    background: var(--invest-green); color: #0a1f14; border-color: var(--invest-green);
   }
   .trend-chart-wrap {
     padding: 10px 20px 16px; flex: 1;
@@ -1824,6 +1827,7 @@
     --bg: #0f0f11; --surface: #18181c; --surface2: #222228;
     --border: #2e2e38; --text: #f0f0f4; --muted: #7a7a8a;
     --topbar-bg: rgba(15,15,17,.96);
+    --invest-green: #a8f0cf;
   }
 
   /* Light: every accent here was chosen to glow on a dark ground, so on white
@@ -1842,12 +1846,15 @@
     --invest-blue: #2A54C6;
     --logo-green: #2F7A50;
     --topbar-bg: rgba(245,245,247,.94);
+    --invest-green: #11705F;
   }
-  /* Those fills are dark now, so the near-black label baked into these
-     buttons would vanish against them. */
-  body.theme-light .save-btn,
+  /* White text belongs ONLY on the filled states. The .is-clean state is a
+     transparent outline button, so it must keep the muted foreground or it
+     disappears against the page. */
+  body.theme-light .save-btn:not(.is-clean),
   body.theme-light .save-btn.saved,
   body.theme-light .topsave-btn.show { color: #ffffff; }
+  body.theme-light .save-btn.is-clean { color: var(--muted); }
 
   /* ── COMPACT DENSITY ───────────────────────────────────── */
   body.density-compact .line-item { padding: 7px 16px; }
@@ -2602,7 +2609,7 @@
     </div>
     <div class="stat-card" id="tile-mortgage" style="border-color: rgba(91,138,255,0.3)">
       <div class="label">Mortgage Renewal</div>
-      <div class="value" id="mtg-renewal-value" style="color:#5b8aff">--</div>
+      <div class="value" id="mtg-renewal-value" style="color:var(--invest-blue)">--</div>
       <div class="sub" id="mtg-renewal-sub">months until term end</div>
       <div class="bar-bg"><div class="bar-fill" id="mtg-renewal-bar" style="width:0%;background:#5b8aff"></div></div>
         </div>
@@ -2680,10 +2687,10 @@
     <div class="section" id="invest-panel">
       <div class="section-header">
         <div class="section-title">
-          <div class="section-dot" style="background: #a8f0cf"></div>
+          <div class="section-dot" style="background: var(--invest-green)"></div>
           Investments
         </div>
-        <div class="section-total" style="color: #a8f0cf" id="invest-total">$0</div>
+        <div class="section-total" style="color: var(--invest-green)" id="invest-total">$0</div>
       </div>
       <div id="invest-body"></div>
       <button class="add-btn" onclick="addInvestment()">+ Add investment</button>
@@ -2691,7 +2698,7 @@
 
     <div class="section" id="invest-trend-panel" style="margin-top:16px">
       <div class="section-header" style="cursor:pointer" onclick="toggleInvestTotalTrend()">
-        <div class="section-title"><div class="section-dot" style="background:#a8f0cf"></div>Total Trend</div>
+        <div class="section-title"><div class="section-dot" style="background:var(--invest-green)"></div>Total Trend</div>
         <div style="display:flex;align-items:center;gap:10px">
           <div class="section-total" id="invest-total-3mo" style="font-size:0.85em">3mo: $0</div>
           <svg id="invest-total-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><polyline points="4 6 8 10 12 6"></polyline></svg>
@@ -2706,7 +2713,7 @@
             <button class="trend-tab" onclick="setInvestTotalPeriod(24,this)">2 yr</button>
           </div>
           <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
-            <div><div style="font-size:0.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Current</div><div id="invest-total-current" style="font-family:var(--font-mono);font-size:1.1em;color:#a8f0cf">$0</div></div>
+            <div><div style="font-size:0.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Current</div><div id="invest-total-current" style="font-family:var(--font-mono);font-size:1.1em;color:var(--invest-green)">$0</div></div>
             <div><div style="font-size:0.62em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Change</div><div id="invest-total-change" style="font-family:var(--font-mono);font-size:1.1em">$0</div></div>
           </div>
           <svg id="invest-total-svg" viewBox="0 0 440 160" style="width:100%;height:auto"></svg>
@@ -5612,6 +5619,12 @@ function clearMonthDebts() {
 
 
 
+// Presentation attributes such as fill="" cannot take var(), so charts that
+// build SVG strings have to resolve the token themselves.
+function investGreen() {
+  return getComputedStyle(document.body).getPropertyValue('--invest-green').trim() || '#a8f0cf';
+}
+
 function renderInvestments() {
   const body = document.getElementById('invest-body');
   const yr = calYear, mo = calMonth;
@@ -7742,7 +7755,7 @@ function renderInvestTotalTrend() {
   labelIdxs.forEach(idx => {
     labels += '<text x="' + xScale(idx).toFixed(1) + '" y="' + (H-8) + '" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">' + points[idx].label + '</text>';
   });
-  const dots = points.map((p, idx) => '<circle cx="' + xScale(idx).toFixed(1) + '" cy="' + yScale(p.value).toFixed(1) + '" r="3" fill="#a8f0cf"/>').join('');
+  const dots = points.map((p, idx) => '<circle cx="' + xScale(idx).toFixed(1) + '" cy="' + yScale(p.value).toFixed(1) + '" r="3" fill="' + investGreen() + '"/>').join('');
   // Value labels above each point (compact, e.g. $18.0k)
   const fmtK = (n) => {
     const abs = Math.abs(n);
@@ -7753,16 +7766,16 @@ function renderInvestTotalTrend() {
     const y = yScale(p.value);
     const above = y > PAD.t + 14; // put label above unless too near the top
     const ly = (above ? y - 7 : y + 14).toFixed(1);
-    return '<text x="' + xScale(idx).toFixed(1) + '" y="' + ly + '" text-anchor="middle" fill="#a8f0cf" font-size="9.5" font-family="var(--font-mono)" font-weight="600">' + fmtK(p.value) + '</text>';
+    return '<text x="' + xScale(idx).toFixed(1) + '" y="' + ly + '" text-anchor="middle" fill="' + investGreen() + '" font-size="9.5" font-family="var(--font-mono)" font-weight="600">' + fmtK(p.value) + '</text>';
   }).join('');
 
   svg.innerHTML =
     '<defs><linearGradient id="itg" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="#a8f0cf" stop-opacity="0.28"/>' +
-      '<stop offset="100%" stop-color="#a8f0cf" stop-opacity="0"/>' +
+      '<stop offset="0%" stop-color="' + investGreen() + '" stop-opacity="0.28"/>' +
+      '<stop offset="100%" stop-color="' + investGreen() + '" stop-opacity="0"/>' +
     '</linearGradient></defs>' +
     '<path d="' + areaD + '" fill="url(#itg)"/>' +
-    '<path d="' + pathD + '" fill="none" stroke="#a8f0cf" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<path d="' + pathD + '" fill="none" stroke="' + investGreen() + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
     dots + valueLabels + labels;
 }
 
@@ -7874,7 +7887,7 @@ function renderInvestTrend() {
     const cx = xScale(idx).toFixed(1);
     const cy = yScale(p.value).toFixed(1);
     const isLast = idx === withData.length - 1;
-    return `<circle cx="${cx}" cy="${cy}" r="${isLast ? 5 : 3.5}" fill="${isLast ? '#a8f0cf' : 'var(--surface)'}" stroke="#a8f0cf" stroke-width="2">
+    return `<circle cx="${cx}" cy="${cy}" r="${isLast ? 5 : 3.5}" fill="${isLast ? investGreen() : 'var(--surface)'}" stroke="${investGreen()}" stroke-width="2">
       <title>${p.label}: ${fmtT(p.value)}</title>
     </circle>`;
   }).join('');
@@ -7890,13 +7903,13 @@ function renderInvestTrend() {
   svg.innerHTML = `
     <defs>
       <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#a8f0cf" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="#a8f0cf" stop-opacity="0"/>
+        <stop offset="0%" stop-color="${investGreen()}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${investGreen()}" stop-opacity="0"/>
       </linearGradient>
     </defs>
     ${gridLines}
     <path d="${areaD}" fill="url(#trendGrad)"/>
-    <path d="${pathD}" fill="none" stroke="#a8f0cf" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${pathD}" fill="none" stroke="${investGreen()}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
     ${labels}
   `;
@@ -8107,7 +8120,7 @@ function renderMortgagePage() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
           <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Total</div>
-          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:#5b8aff">${fmtCurrency(totalPayment)}</div>
+          <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:var(--invest-blue)">${fmtCurrency(totalPayment)}</div>
         </div>
         <div style="background:var(--surface2);border-radius:10px;padding:12px 14px">
           <div style="font-family:var(--font-mono);font-size:0.6em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Prop. Tax</div>
@@ -11821,7 +11834,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div class="trend-summary">
       <div class="trend-stat">
         <div class="trend-stat-label">Current</div>
-        <div class="trend-stat-value" id="trend-stat-current" style="color:#a8f0cf">—</div>
+        <div class="trend-stat-value" id="trend-stat-current" style="color:var(--invest-green)">—</div>
       </div>
       <div class="trend-stat">
         <div class="trend-stat-label">Period Change</div>
