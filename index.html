@@ -1135,49 +1135,32 @@
     font-family: var(--font-mono); font-size: 0.74em; color: var(--muted);
   }
 
-  /* Inline day-of-month calendar picker (business expense modal) */
-  .daypick-btn {
-    width: 100%; box-sizing: border-box;
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-    color: var(--text); font-family: var(--font-sans); font-size: 1.0em;
-    padding: 10px 12px; text-align: left; cursor: pointer;
-  }
-  .daypick-btn:hover { border-color: var(--muted); }
-  .daypick-btn.is-empty > span:first-child { color: var(--muted); }
-  .daypick-btn svg { flex-shrink: 0; color: var(--muted); }
-  .daypick-pop {
-    display: none; margin-top: 8px; padding: 10px;
+  /* Day picker for recurring payment dates. Multi-select, because an expense
+     can fall on several days a month, and "end of month" is a valid answer
+     that no calendar-date control can express. */
+  .duepick-pop {
+    display: none; margin: -6px 0 16px; padding: 12px;
     background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
   }
-  .daypick-pop.open { display: block; }
-  .daypick-head {
-    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
-    font-family: var(--font-mono); font-size: 0.72em; color: var(--muted);
-    letter-spacing: 0.06em; text-transform: uppercase;
-  }
-  .daypick-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-  .daypick-dow {
-    text-align: center; padding: 2px 0;
-    font-family: var(--font-mono); font-size: 0.66em; color: var(--muted);
-  }
-  .daypick-cell {
+  .duepick-pop.open { display: block; }
+  .duepick-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .duepick-cell {
     aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
     padding: 0; background: var(--surface); color: var(--text);
     border: 1px solid transparent; border-radius: 6px;
     font-family: var(--font-mono); font-size: 0.82em; cursor: pointer;
-    transition: background 0.12s, border-color 0.12s;
+    transition: background .12s, border-color .12s;
   }
-  .daypick-cell:hover { border-color: var(--accent); }
-  .daypick-cell.blank { background: transparent; cursor: default; }
-  .daypick-cell.today { border-color: var(--muted); }
-  .daypick-cell.sel { background: var(--accent); color: #111; border-color: var(--accent); }
-  .daypick-clear {
-    margin-top: 8px; width: 100%; padding: 7px;
-    background: transparent; border: 1px solid var(--border); border-radius: 8px;
-    color: var(--muted); font-family: var(--font-mono); font-size: 0.74em; cursor: pointer;
+  .duepick-cell:hover { border-color: var(--accent2); }
+  .duepick-cell.sel { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  .duepick-foot { display: flex; gap: 8px; margin-top: 10px; }
+  .duepick-chip {
+    flex: 1; padding: 8px; border-radius: 8px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    font-family: var(--font-mono); font-size: 0.74em;
   }
-  .daypick-clear:hover { color: var(--text); border-color: var(--muted); }
+  .duepick-chip.sel { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  .duepick-chip:hover { color: var(--text); }
 
   .form-field {
     margin-bottom: 16px;
@@ -3565,6 +3548,97 @@ function loadState() {
 }
 
 
+
+
+// ─── PAYMENT DATE PICKER (Money Out) ─────────────────────────────
+// This field is a recurring due day, not a calendar date: it accepts several
+// days in a month and the phrase "end of month". <input type="date"> cannot
+// express either, so the text field stays and gains a tap-to-pick panel that
+// writes back in the same format parseDueDays() already understands.
+
+function _dueDayLabel(d) { return d + getDaySuffix(d); }
+
+// Rewrite the text field from a set of days.
+function writeDueField(days, eom) {
+  const el = document.getElementById('exp-modal-due');
+  if (!el) return;
+  if (eom) { el.value = 'end of month'; }
+  else {
+    const sorted = days.slice().sort((a, b) => a - b);
+    el.value = sorted.map(_dueDayLabel).join(', ');
+  }
+  renderDuePicker();
+}
+
+function toggleDueDay(d) {
+  const parsed = parseDueDays(document.getElementById('exp-modal-due').value);
+  let days = parsed.filter(x => x !== 999);          // picking a day drops "end of month"
+  if (days.indexOf(d) === -1) days.push(d);
+  else days = days.filter(x => x !== d);
+  writeDueField(days, false);
+}
+
+function toggleDueEom() {
+  const parsed = parseDueDays(document.getElementById('exp-modal-due').value);
+  writeDueField([], parsed.indexOf(999) === -1);     // "end of month" replaces any days
+}
+
+function clearDueDays() { writeDueField([], false); }
+
+function renderDuePicker() {
+  const pop = document.getElementById('exp-due-pop');
+  if (!pop) return;
+  const parsed = parseDueDays((document.getElementById('exp-modal-due') || {}).value || '');
+  const eom = parsed.indexOf(999) !== -1;
+  const days = parsed.filter(d => d !== 999);
+  let h = '<div class="duepick-grid">';
+  for (let d = 1; d <= 31; d++) {
+    const sel = (!eom && days.indexOf(d) !== -1) ? ' sel' : '';
+    h += '<button type="button" class="duepick-cell' + sel + '" onclick="toggleDueDay(' + d + ')">' + d + '</button>';
+  }
+  h += '</div>';
+  h += '<div class="duepick-foot">' +
+       '<button type="button" class="duepick-chip' + (eom ? ' sel' : '') + '" onclick="toggleDueEom()">End of month</button>' +
+       '<button type="button" class="duepick-chip" onclick="clearDueDays()">Clear</button>' +
+       '</div>';
+  pop.innerHTML = h;
+}
+
+// Expands inline so the modal's own scrolling cannot clip it.
+function toggleDuePicker() {
+  const pop = document.getElementById('exp-due-pop');
+  if (!pop) return;
+  if (pop.classList.contains('open')) { pop.classList.remove('open'); return; }
+  renderDuePicker();
+  pop.classList.add('open');
+  setTimeout(() => {
+    try { pop.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+  }, 60);
+}
+
+function closeDuePicker() {
+  const pop = document.getElementById('exp-due-pop');
+  if (pop) pop.classList.remove('open');
+}
+
+// ─── DATE FIELD HELPERS ──────────────────────────────────────────
+// All specific-date fields use <input type="date"> so they get the platform's
+// own calendar picker. These convert between that yyyy-mm-dd string and the
+// {yr, mo, day} triples the data model stores.
+
+function toDateInput(yr, mo, day) {
+  if (yr === undefined || yr === null || mo === undefined || mo === null || !day) return '';
+  return yr + '-' + String(mo + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
+function fromDateInput(str) {
+  if (!str) return null;
+  const p = String(str).split('-');
+  if (p.length !== 3) return null;
+  const yr = parseInt(p[0]), mo = parseInt(p[1]) - 1, day = parseInt(p[2]);
+  if (isNaN(yr) || isNaN(mo) || isNaN(day)) return null;
+  return { yr: yr, mo: mo, day: day };
+}
 
 // ─── LOGO IMAGE HANDLING ─────────────────────────────────────────
 // Logos render at ~34px. Storing a full-resolution camera photo as base64
@@ -6777,6 +6851,7 @@ function addExpense() {
   if (repeatTitle) repeatTitle.textContent = 'Repeat every month';
   const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
   if (repeatDesc) repeatDesc.textContent = 'On means this expense repeats from this month forward. Off means this month only.';
+  closeDuePicker();
   document.getElementById('expense-modal').classList.add('open');
   setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
 }
@@ -6812,6 +6887,7 @@ function editExpense(id) {
   if (repeatTitle) repeatTitle.textContent = 'Apply change to all months';
   const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
   if (repeatDesc) repeatDesc.textContent = 'On = this month and forward. Off = this month only.';
+  closeDuePicker();
   document.getElementById('expense-modal').classList.add('open');
   setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
 }
@@ -6873,6 +6949,7 @@ function addCustomSource() {
 function expModalDelete() {
   if (!expenseEditId) return;
   window._pendingCCOtherCharges = false;
+  closeDuePicker();
   document.getElementById('expense-modal').classList.remove('open');
   confirmDeleteExpense(expenseEditId);
   expenseEditId = null;
@@ -6892,6 +6969,7 @@ function expModalRemoveForward() {
   if (endMo < 0) { endMo = 11; endYr--; }
   item.endYr = endYr;
   item.endMo = endMo;
+  closeDuePicker();
   document.getElementById('expense-modal').classList.remove('open');
   expenseEditId = null;
   renderExpenses();
@@ -6960,6 +7038,7 @@ function saveExpenseModal() {
     window._pendingCCOtherCharges = false;
   }
 
+  closeDuePicker();
   document.getElementById('expense-modal').classList.remove('open');
   renderExpenses();
   reopenSection('expense-body');
@@ -6974,6 +7053,7 @@ function saveExpenseModal() {
 
 function closeExpenseModal(e) {
   if (e && e.target !== document.getElementById('expense-modal')) return;
+  closeDuePicker();
   document.getElementById('expense-modal').classList.remove('open');
   window._calReturnDay = null;
   window._pendingCCOtherCharges = false;
@@ -8095,8 +8175,12 @@ function getWeekStart(date) {
 // Parse due string → raw day numbers before clamping
 function parseDueDays(due) {
   if (!due || !due.trim()) return [];
-  const s = due.toLowerCase().replace(/st|nd|rd|th/g, '');
-  if (s.includes('end') || s.includes('last')) return [999];
+  const raw = due.toLowerCase();
+  // Test for end-of-month BEFORE stripping ordinal suffixes. Stripping first
+  // turns "end" into "e" (the "nd") and "last" into "la" (the "st"), so the
+  // keyword was destroyed before it could ever be matched.
+  if (raw.includes('end') || raw.includes('last')) return [999];
+  const s = raw.replace(/st|nd|rd|th/g, '');
   const range = s.match(/(\d+)\s*[-–]\s*(\d+)/);
   if (range) { const days=[]; for(let d=+range[1];d<=+range[2];d++) days.push(d); return days; }
   const single = s.match(/\d+/g);
@@ -9956,8 +10040,8 @@ function buildBookingsCalendarHTML(yr, mo) {
 // Open the booking modal pre-set to a specific day of the current month
 function openBookingModalOnDay(day) {
   openBookingModal(null);
-  const dayEl = document.getElementById('booking-day');
-  if (dayEl) dayEl.value = day;
+  const dayEl = document.getElementById('booking-date');
+  if (dayEl) dayEl.value = toDateInput(calYear, calMonth, day);
 }
 
 // ── Linking business records ↔ personal Money In / Money Out ──
@@ -10152,7 +10236,7 @@ function openBookingModal(id) {
   // Fee field shows the base fee; older bookings without a separate fee fall back to amount
   document.getElementById('booking-amount').value  = b ? (b.fee !== undefined ? b.fee : (b.amount || '')) : '';
   document.getElementById('booking-tip').value     = b ? (b.tip || '') : '';
-  document.getElementById('booking-day').value     = b ? (b.day || '') : '';
+  document.getElementById('booking-date').value    = b ? toDateInput(b.yr, b.mo, b.day) : toDateInput(calYear, calMonth, new Date().getDate());
   document.getElementById('booking-deposit').value = b ? (b.deposit || '') : '';
   document.getElementById('booking-status').value  = b ? (b.status || 'quoted') : 'quoted';
   document.getElementById('booking-add-personal').checked = b ? !!b.addToPersonal : false;
@@ -10198,7 +10282,10 @@ function saveBooking() {
   const fee     = parseFloat(document.getElementById('booking-amount').value) || 0;
   const tip     = parseFloat(document.getElementById('booking-tip').value) || 0;
   const amount  = fee + tip; // total drives revenue, calendar, linked income
-  const day     = parseInt(document.getElementById('booking-day').value) || null;
+  // The event date now carries its own month and year, so a booking can be
+  // entered from any month without navigating there first.
+  const evt     = fromDateInput(document.getElementById('booking-date').value);
+  const day     = evt ? evt.day : null;
   const deposit = parseFloat(document.getElementById('booking-deposit').value) || 0;
   const status  = document.getElementById('booking-status').value || 'quoted';
   const addToPersonal = document.getElementById('booking-add-personal').checked;
@@ -10221,12 +10308,15 @@ function saveBooking() {
     if (target) {
       target.name = name; target.description = description;
       target.fee = fee; target.tip = tip; target.amount = amount; target.day = day;
+      if (evt) { target.yr = evt.yr; target.mo = evt.mo; }
       target.deposit = deposit; target.status = status; target.addToPersonal = addToPersonal;
       target.paidYr = paidYr; target.paidMo = paidMo; target.paidDay = paidDay;
     }
   } else {
     target = {
-      id: newBusinessId('bk'), yr: calYear, mo: calMonth,
+      id: newBusinessId('bk'),
+      yr: evt ? evt.yr : calYear,
+      mo: evt ? evt.mo : calMonth,
       day, name, description, fee, tip, amount, deposit, status, addToPersonal,
       paidYr, paidMo, paidDay,
     };
@@ -10273,74 +10363,19 @@ function syncBizFreqLabels() {
   if (hint) {
     hint.textContent = recurring
       ? 'Repeats every month from ' + MONTHS[calMonth] + ' ' + calYear + ' forward'
-      : MONTHS[calMonth] + ' ' + calYear + ' only';
+      : 'Charged once, on the date below';
+  }
+  const dLabel = document.getElementById('biz-expense-date-label');
+  const dHint  = document.getElementById('biz-expense-date-hint');
+  if (dLabel) dLabel.textContent = recurring ? 'Day of month' : 'Date';
+  if (dHint) {
+    dHint.textContent = recurring
+      ? 'Only the day is used \u2014 the month and year are ignored for recurring costs.'
+      : '';
   }
 }
 
-// ── Day-of-month calendar picker (business expense modal) ──
-// Backed by a hidden input so saveBizExpense() keeps reading the same field.
-
-// Write a day into the hidden input and refresh the button label.
-function setBizExpenseDay(day) {
-  const hidden = document.getElementById('biz-expense-day');
-  const label  = document.getElementById('biz-expense-day-label');
-  const btn    = document.getElementById('biz-expense-day-btn');
-  const d = parseInt(day) || null;
-  if (hidden) hidden.value = d ? String(d) : '';
-  if (label)  label.textContent = d ? (MONTHS[calMonth] + ' ' + d + getDaySuffix(d)) : 'Select a day';
-  if (btn)    btn.classList.toggle('is-empty', !d);
-  renderBizDayPicker();
-}
-
-// Build the month grid for the month currently being viewed.
-function renderBizDayPicker() {
-  const pop = document.getElementById('biz-expense-day-pop');
-  if (!pop) return;
-  const yr = calYear, mo = calMonth;
-  const dim   = new Date(yr, mo + 1, 0).getDate();
-  const first = new Date(yr, mo, 1).getDay();
-  const hidden = document.getElementById('biz-expense-day');
-  const sel = hidden ? (parseInt(hidden.value) || null) : null;
-  const today = new Date();
-  const isCurMo = today.getFullYear() === yr && today.getMonth() === mo;
-  const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-
-  let h = '<div class="daypick-head"><span>' + MONTHS[mo] + ' ' + yr + '</span><span>tap a day</span></div>';
-  h += '<div class="daypick-grid">';
-  DOW.forEach(d => { h += '<div class="daypick-dow">' + d + '</div>'; });
-  for (let i = 0; i < first; i++) h += '<div class="daypick-cell blank"></div>';
-  for (let d = 1; d <= dim; d++) {
-    let cls = 'daypick-cell';
-    if (d === sel) cls += ' sel';
-    else if (isCurMo && d === today.getDate()) cls += ' today';
-    h += '<button type="button" class="' + cls + '" onclick="pickBizExpenseDay(' + d + ')">' + d + '</button>';
-  }
-  h += '</div>';
-  h += '<button type="button" class="daypick-clear" onclick="pickBizExpenseDay(null)">No specific day</button>';
-  pop.innerHTML = h;
-}
-
-function pickBizExpenseDay(day) {
-  setBizExpenseDay(day);
-  closeBizDayPicker();
-}
-
-// Expands inline rather than floating, so the modal's own scrolling can't clip it.
-function toggleBizDayPicker() {
-  const pop = document.getElementById('biz-expense-day-pop');
-  if (!pop) return;
-  if (pop.classList.contains('open')) { closeBizDayPicker(); return; }
-  renderBizDayPicker();
-  pop.classList.add('open');
-  setTimeout(() => {
-    try { pop.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
-  }, 60);
-}
-
-function closeBizDayPicker() {
-  const pop = document.getElementById('biz-expense-day-pop');
-  if (pop) pop.classList.remove('open');
-}
+// (The custom day-of-month picker was replaced by <input type="date">.)
 
 // ── Business expense add/edit modal ──
 let _editingBizExpenseId = null;
@@ -10367,8 +10402,13 @@ function openBizExpenseModal(id) {
   document.getElementById('biz-expense-freq').checked = !isOneTime;
   syncBizFreqLabels();
   document.getElementById('biz-expense-add-personal').checked = e ? !!e.addToPersonal : false;
-  closeBizDayPicker();
-  setBizExpenseDay(e ? (e.day || null) : null);
+  const dateEl = document.getElementById('biz-expense-date');
+  if (dateEl) {
+    const yr = (e && e.yr !== undefined) ? e.yr : calYear;
+    const mo = (e && e.mo !== undefined) ? e.mo : calMonth;
+    const day = e ? (e.day || null) : null;
+    dateEl.value = toDateInput(yr, mo, day || new Date().getDate());
+  }
   populateBizExpenseSources(e ? (e.source || '') : '');
   onBizExpensePersonalToggle();
   if (titleEl) titleEl.textContent = (e ? 'Edit Expense' : 'Add Expense') + ' \u00b7 ' + MONTHS[calMonth] + ' ' + calYear;
@@ -10383,7 +10423,6 @@ function closeBizExpenseModal(e) {
   if (e && e.target !== document.getElementById('biz-expense-modal-overlay')) return;
   const overlay = document.getElementById('biz-expense-modal-overlay');
   if (overlay) overlay.classList.remove('open');
-  closeBizDayPicker();
   _editingBizExpenseId = null;
 }
 
@@ -10429,7 +10468,10 @@ function saveBizExpense() {
   const category = document.getElementById('biz-expense-category').value || 'Other';
   const oneTime  = !document.getElementById('biz-expense-freq').checked;
   const addToPersonal = document.getElementById('biz-expense-add-personal').checked;
-  const day      = parseInt(document.getElementById('biz-expense-day').value) || null;
+  // A one-time expense takes its whole date from the field; a recurring one
+  // only needs the day, since it repeats every month.
+  const picked   = fromDateInput(document.getElementById('biz-expense-date').value);
+  const day      = picked ? picked.day : null;
   const source   = document.getElementById('biz-expense-source').value || '';
   if (!name && amount === 0) { closeBizExpenseModal(); return; }
 
@@ -10441,12 +10483,17 @@ function saveBizExpense() {
       target.name = name; target.amount = amount; target.category = category;
       target.oneTime = oneTime; target.addToPersonal = addToPersonal; target.day = day;
       target.source = source;
-      if (target.yr === undefined) { target.yr = calYear; target.mo = calMonth; }
+      // One-time costs belong to the month on the date field. Recurring ones
+      // keep their existing start month; the date only supplies the day.
+      if (oneTime && picked) { target.yr = picked.yr; target.mo = picked.mo; }
+      else if (target.yr === undefined) { target.yr = calYear; target.mo = calMonth; }
     }
   } else {
     target = {
       id: newBusinessId('be'), name, amount, category, oneTime,
-      addToPersonal, day, source, yr: calYear, mo: calMonth,
+      addToPersonal, day, source,
+      yr: (oneTime && picked) ? picked.yr : calYear,
+      mo: (oneTime && picked) ? picked.mo : calMonth,
     };
     businessExpenses.push(target);
   }
@@ -10882,6 +10929,7 @@ function addOtherChargesToExpenses(cardId, amount) {
   if (repeatTitle) repeatTitle.textContent = 'Repeat every month';
   const repeatDesc = repeatWrap.querySelector('.exp-repeat-desc');
   if (repeatDesc) repeatDesc.textContent = 'On means this expense repeats from this month forward. Off means this month only.';
+  closeDuePicker();
   document.getElementById('expense-modal').classList.add('open');
   setTimeout(() => document.getElementById('exp-modal-name').focus(), 150);
 }
@@ -11454,9 +11502,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
       <div class="form-field">
         <label>Payment Date</label>
-        <input type="text" id="exp-modal-due" placeholder="e.g. 15th, end of month">
+        <div style="position:relative">
+          <input type="text" id="exp-modal-due" placeholder="e.g. 15th, end of month" style="padding-right:38px" oninput="renderDuePicker()">
+          <button type="button" onclick="toggleDuePicker()" title="Pick days" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;display:flex;align-items:center">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>
+          </button>
+        </div>
       </div>
     </div>
+    <div class="duepick-pop" id="exp-due-pop"></div>
     <div class="form-field">
       <label>Category</label>
       <select id="exp-modal-cat" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"><option>Housing</option><option>Cars</option><option>Debt</option><option>Subscriptions</option><option>Lifestyle</option><option>Savings</option><option selected="">Insurance</option><option>Utilities</option></select>
@@ -11914,8 +11968,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
     <div style="display:flex;gap:12px">
       <div class="form-field" style="flex:1">
-        <label>Day of month</label>
-        <input type="number" id="booking-day" placeholder="—" min="1" max="31">
+        <label>Event date</label>
+        <input type="date" id="booking-date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
       </div>
       <div class="form-field" style="flex:1">
         <label>Deposit ($)</label>
@@ -11968,13 +12022,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       <select id="biz-expense-category" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;-webkit-appearance:none"></select>
     </div>
     <div class="form-field">
-      <label>Day of month</label>
-      <button type="button" id="biz-expense-day-btn" class="daypick-btn is-empty" onclick="toggleBizDayPicker()">
-        <span id="biz-expense-day-label">Select a day</span>
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>
-      </button>
-      <input type="hidden" id="biz-expense-day">
-      <div class="daypick-pop" id="biz-expense-day-pop"></div>
+      <label id="biz-expense-date-label">Date</label>
+      <input type="date" id="biz-expense-date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-sans);font-size:1.0em;padding:10px 12px;box-sizing:border-box">
+      <div class="freq-hint" id="biz-expense-date-hint" style="text-align:left;margin-top:6px"></div>
     </div>
     <div class="form-field">
       <label>Frequency</label>
