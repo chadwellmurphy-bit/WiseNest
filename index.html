@@ -9837,9 +9837,13 @@ function renderBusiness() {
   } else {
     bizExpenses.forEach(e => {
       const amt = e.oneTime ? (parseFloat(e.amount) || 0) : getBusinessExpenseAmountForMonth(e, yr, mo);
+      // One-time is the default, so it needs no badge — an unmarked row is a
+      // one-off. Only the exception, a recurring cost, gets flagged.
       const freqTag = e.oneTime
-        ? '<span style="font-size:0.6429em;background:var(--accent2);color:#111;border-radius:3px;padding:1px 5px;margin-left:6px">one-time</span>'
-        : '<span style="font-size:0.6429em;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:1px 5px;margin-left:6px">monthly</span>';
+        ? ''
+        : '<span style="font-size:0.6429em;background:var(--accent2);color:#111;border-radius:3px;padding:1px 5px;margin-left:6px;display:inline-flex;align-items:center;gap:3px">'
+          + '<svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8a6 6 0 0 1 10.2-4.2L14 5"/><path d="M14 8a6 6 0 0 1-10.2 4.2L2 11"/></svg>'
+          + 'recurring</span>';
       html +=
       '<div class="line-item" style="grid-template-columns:1fr auto auto;align-items:center">' +
         '<div class="name" style="flex-direction:column;align-items:flex-start;gap:2px">' +
