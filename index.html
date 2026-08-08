@@ -1223,7 +1223,10 @@
   .btn-secondary:hover { color: var(--text); border-color: var(--text); }
   /* Square icon-only variant, so Delete costs one glyph of width in a
      four-button row instead of a whole word. */
-  .btn-icon-only { padding: 10px; gap: 0; flex: none; }
+  .btn-icon-only {
+    padding: 10px; gap: 0; flex: none;
+    display: flex; align-items: center; justify-content: center;
+  }
   /* "End from this month" is neither destructive nor confirmatory — amber
      keeps it distinct from both Delete red and Confirm blue. */
   .btn-warn {
@@ -11586,13 +11589,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
 <div class="modal-actions" style="gap:8px;align-items:center;flex-wrap:nowrap">
       <button class="btn-primary" style="flex:1;padding:10px;min-width:0" onclick="saveExpenseModal()">Confirm</button>
-      <button class="btn-secondary" style="flex:none;padding:10px 14px;white-space:nowrap" onclick="closeExpenseModal()">Cancel</button>
       <button id="exp-modal-delete-btn" class="btn-danger btn-icon-only" style="display:none" onclick="expModalDelete()" title="Delete this expense" aria-label="Delete this expense">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
       </button>
       <button id="exp-modal-remove-fwd-btn" class="btn-warn" style="display:none" onclick="expModalRemoveForward()" title="Stop this expense from this month forward, keeping past months intact">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h9M8 5l4 3-4 3"/><path d="M14 2v12" stroke-dasharray="2 2"/></svg>
         End
+      </button>
+      <button class="btn-secondary btn-icon-only" onclick="closeExpenseModal()" title="Cancel" aria-label="Cancel">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
       </button>
     </div>
   </div>
