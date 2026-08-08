@@ -4647,7 +4647,8 @@ function openEditPay(yr, mo, id, idx, currentAmount) {
   document.getElementById('pay-edit-day').textContent = day ? (MONTHS[mo] + ' ' + day + getDaySuffix(day)) : '';
 
   const hasActual = getActualPay(yr, mo, id, idx) !== null;
-  document.getElementById('pay-edit-reset').style.display = hasActual ? 'block' : 'none';
+  // '' restores the class's own display:flex
+  document.getElementById('pay-edit-reset').style.display = hasActual ? '' : 'none';
 
   document.getElementById('pay-edit-overlay').classList.add('open');
   setTimeout(() => { const el = document.getElementById('pay-edit-amount'); if(el){el.focus();el.select();} }, 150);
@@ -4664,6 +4665,18 @@ function saveEditPay() {
   setActualPay(yr, mo, id, idx, val);
 }
 
+// Reset from inside the modal. Confirms, because the override is real data
+// the user typed in and the default may well be $0.
+function payEditReset() {
+  const yr  = +document.getElementById('pay-edit-yr').value;
+  const mo  = +document.getElementById('pay-edit-mo').value;
+  const id  =  document.getElementById('pay-edit-id').value;
+  const idx = +document.getElementById('pay-edit-idx').value;
+  const def = fmtMoney(getIncomeAmountForMonth(id, yr, mo));
+  if (!confirm('Discard this amount and go back to the default of ' + def + '?')) return;
+  clearEditPay(yr, mo, id, idx);
+}
+
 function clearEditPay(yr, mo, id, idx) {
   document.getElementById('pay-edit-overlay').classList.remove('open');
   pushUndo();
@@ -4671,6 +4684,8 @@ function clearEditPay(yr, mo, id, idx) {
 }
 
 function closePayEdit(e) {
+  // Called both from the overlay backdrop (with an event) and the Cancel
+  // button (without one).
   if (e && e.target !== document.getElementById('pay-edit-overlay')) return;
   document.getElementById('pay-edit-overlay').classList.remove('open');
 }
@@ -5180,9 +5195,6 @@ function renderIncome() {
           <button class="icon-btn" onclick="openEditPay(${yr},${mo},'${item.id}',${idx},${amt})" title="Edit actual pay">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
           </button>
-          ${isEdited ? `<button class="icon-btn delete" onclick="confirmResetActualPay(${yr},${mo},'${item.id}',${idx})" title="Reset to default">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-          </button>` : ''}
         </div>
         <div style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;color:${isEdited ? 'var(--accent)' : 'var(--income-green)'};text-align:right;min-width:76px">
           ${fmt(amt)}
@@ -6683,11 +6695,7 @@ function confirmDeleteInvestment(i) {
   deleteInvestment(i);
 }
 
-function confirmResetActualPay(yr, mo, id, idx) {
-  if (!confirm('Reset this pay to the default amount?')) return;
-  pushUndo();
-  setActualPay(yr, mo, id, idx, null);
-}
+// (confirmResetActualPay removed: Reset now lives in the Edit Actual Pay modal.)
 
 function deleteIncome(id) {
   budget.income = budget.income.filter(i => i.id !== id);
@@ -12011,13 +12019,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     <input type="hidden" id="pay-edit-mo" value="1">
     <input type="hidden" id="pay-edit-id" value="chad">
     <input type="hidden" id="pay-edit-idx" value="1">
-    <div class="modal-actions">
-      <button class="btn-primary" onclick="saveEditPay()">Confirm</button>
-      <button class="btn-secondary" onclick="document.getElementById('pay-edit-overlay').classList.remove('open')">Cancel</button>
+    <div class="modal-actions" style="gap:8px;align-items:center;flex-wrap:nowrap">
+      <button class="btn-primary" style="flex:1;padding:10px;min-width:0" onclick="saveEditPay()">Confirm</button>
+      <button id="pay-edit-reset" class="btn-warn" style="display:none" onclick="payEditReset()" title="Discard this override and go back to the default amount">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8a6 6 0 1 0 6-6H5"/><path d="M8 5L5 2l3-3" transform="translate(0,3)"/></svg>
+        Reset
+      </button>
+      <button class="btn-secondary btn-icon-only" onclick="closePayEdit()" title="Cancel" aria-label="Cancel">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
     </div>
-    <button id="pay-edit-reset" class="reset-btn" style="margin-top:8px;display:none" onclick="clearEditPay(+document.getElementById('pay-edit-yr').value, +document.getElementById('pay-edit-mo').value, document.getElementById('pay-edit-id').value, +document.getElementById('pay-edit-idx').value)">
-      Reset to default amount
-    </button>
   </div>
 </div>
 <!-- INCOME AMOUNT SCOPE MODAL -->
