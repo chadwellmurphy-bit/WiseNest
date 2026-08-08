@@ -3044,9 +3044,18 @@
         </label>
       </div>
     </div>
-    <div class="modal-actions">
-      <button class="btn-primary" onclick="saveIncomeModal()">Confirm</button>
-      <button class="btn-secondary" onclick="closeIncomeModal()">Cancel</button>
+    <div class="modal-actions" style="gap:8px;align-items:center;flex-wrap:nowrap">
+      <button class="btn-primary" style="flex:1;padding:10px;min-width:0" onclick="saveIncomeModal()">Confirm</button>
+      <button id="income-modal-delete-btn" class="btn-danger btn-icon-only" style="display:none" onclick="incomeModalDelete()" title="Delete this income source" aria-label="Delete this income source">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
+      </button>
+      <button id="income-modal-end-btn" class="btn-warn" style="display:none" onclick="incomeModalEnd()" title="Stop this income from this month forward">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h9M8 5l4 3-4 3"/><path d="M14 2v12" stroke-dasharray="2 2"/></svg>
+        End
+      </button>
+      <button class="btn-secondary btn-icon-only" onclick="closeIncomeModal()" title="Cancel" aria-label="Cancel">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
     </div>
   </div>
 </div>
@@ -4580,6 +4589,13 @@ function setActualPay(yr, mo, id, idx, amount) {
 
 // Monthly actual income for one item in a given month
 // Uses actual values where set, default otherwise
+// True once a repeating income source has been ended, i.e. the month asked
+// about is after its final month. Past months keep their history untouched.
+function incomeEnded(item, yr, mo) {
+  return !!item && item.endYr !== undefined &&
+    (yr > item.endYr || (yr === item.endYr && mo > item.endMo));
+}
+
 function monthlyActualIncomeForMonth(item, yr, mo) {
   // One-time items only count in their specific month
   if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return 0;
@@ -4587,6 +4603,8 @@ function monthlyActualIncomeForMonth(item, yr, mo) {
   if (item.startYr !== undefined) {
     if (yr < item.startYr || (yr === item.startYr && mo < item.startMo)) return 0;
   }
+  // Ended sources contribute nothing after their final month
+  if (incomeEnded(item, yr, mo)) return 0;
   const days = getIncomeDaysInMonth(item, yr, mo);
   if (days.length === 0) {
     // Fallback only for repeating items: use the month-effective rate
@@ -5089,15 +5107,14 @@ function renderIncome() {
           <button class="icon-btn" onclick="editIncome('${item.id}')" title="Edit">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
           </button>
-          <button class="icon-btn delete" onclick="confirmDeleteIncome('${item.id}')" title="Delete">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-          </button>
         </div>
         <div style="font-family:var(--font-serif);font-size:1.15em;letter-spacing:-.02em;color:var(--income-green);min-width:76px;text-align:right">${fmt(dispAmt)}</div>
       </div>`;
     }
-    // Repeating items: hide in months before they were created
+    // Repeating items: hide in months before they were created, or after
+    // they were ended
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return '';
+    if (incomeEnded(item, yr, mo)) return '';
     const perPay = getIncomeAmountForMonth(item.id, yr, mo);
     const perY = FREQ_PER_YEAR[item.freq] || 12;
     const monthly = (perPay * perY) / 12;
@@ -5114,9 +5131,6 @@ function renderIncome() {
       <div class="item-actions">
         <button class="icon-btn" onclick="editIncome('${item.id}')" title="Edit">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-9 9H2v-3L11 2z"/></svg>
-        </button>
-        <button class="icon-btn delete" onclick="confirmDeleteIncome('${item.id}')" title="Delete">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
         </button>
       </div>
       <input class="amount-input income-amount-input" type="number" value="${perPay}"
@@ -5135,6 +5149,7 @@ function renderIncome() {
     if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
     // Repeating items: skip months before they were created
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+    if (incomeEnded(item, yr, mo)) return;
     const days = getIncomeDaysInMonth(item, yr, mo);
     if (days.length === 0) return;
     days.forEach((day, idx) => {
@@ -5179,6 +5194,7 @@ function renderIncome() {
   // Actual total
   const actualTotal = totalActualMonthlyIncome(yr, mo);
   const defaultTotal = budget.income.reduce((s,i) => {
+    if (incomeEnded(i, yr, mo)) return s;
     const perY = FREQ_PER_YEAR[i.freq] || 12;
     return s + (getIncomeAmountForMonth(i.id, yr, mo) * perY) / 12;
   }, 0);
@@ -5306,9 +5322,6 @@ function renderExpenses() {
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:0;padding-top:2px;cursor:pointer" title="Click to edit" onclick="editExpense('${item.id}')">
         <span style="font-family:var(--font-mono);font-size:0.8571em;color:${amt < 0 ? 'var(--income-green)' : 'var(--muted)'};line-height:1">${amt < 0 ? '-$' : '$'}</span>
         <span style="font-family:var(--font-mono);font-size:0.8571em;color:${amt < 0 ? 'var(--income-green)' : 'var(--text)'};line-height:1">${Math.abs(Number(amt)).toLocaleString('en-CA')}</span>
-        <button class="icon-btn delete" onclick="event.stopPropagation();confirmDeleteExpense('${item.id}')" title="Delete" style="opacity:0;width:16px;height:16px;margin-left:4px;flex-shrink:0" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-        </button>
       </div>
     </div>
   `}).join('');
@@ -5700,6 +5713,7 @@ function renderUpcomingBills() {
     budget.income.forEach(item => {
       if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
       if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+      if (incomeEnded(item, yr, mo)) return;
       const payDays = getIncomeDaysInMonth(item, yr, mo);
       const monthRate = getIncomeAmountForMonth(item.id, yr, mo);
       payDays.forEach((pd, idx) => {
@@ -6179,6 +6193,7 @@ function reconcileChequing(acct) {
       if (!keyMatchesAccount(item.destAccount)) return;
       if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
       if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+      if (incomeEnded(item, yr, mo)) return;
       const payDays = getIncomeDaysInMonth(item, yr, mo);
       const monthRate = getIncomeAmountForMonth(item.id, yr, mo);
       payDays.forEach((pd, idx) => {
@@ -6602,6 +6617,42 @@ function syncUndoBtn() {
 }
 
 // ─── CONFIRM HELPERS ──────────────────────────────────────────────
+// Stop a repeating income from the viewed month forward, keeping every earlier
+// month's history and actual-pay entries intact. This is the non-destructive
+// counterpart to Delete: use it when a job ends, not when it was a mistake.
+function incomeModalEnd() {
+  if (!modalEditId) return;
+  const item = budget.income.find(i => i.id === modalEditId);
+  if (!item) return;
+  const MONTH_NAMES = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'];
+  const label = MONTH_NAMES[calMonth] + ' ' + calYear;
+  if (!confirm('End "' + item.name + '" from ' + label + '?\n\nIt will stop appearing from ' + label + ' onward. Earlier months keep their history.')) return;
+  pushUndo();
+  // End marks the last month the income was received, so store the month
+  // before the one being viewed.
+  let endMo = calMonth - 1, endYr = calYear;
+  if (endMo < 0) { endMo = 11; endYr--; }
+  item.endYr = endYr;
+  item.endMo = endMo;
+  document.getElementById('income-modal').classList.remove('open');
+  modalEditId = null;
+  renderIncome();
+  updateSummary();
+  renderCalendar();
+  reopenSection('income-body');
+}
+
+// Delete from inside the edit modal: dismiss it first so the confirm prompt
+// is not stacked behind the sheet, then hand off to the shared routine.
+function incomeModalDelete() {
+  if (!modalEditId) return;
+  const id = modalEditId;
+  document.getElementById('income-modal').classList.remove('open');
+  modalEditId = null;
+  confirmDeleteIncome(id);
+}
+
 function confirmDeleteIncome(id) {
   const item = budget.income.find(i => i.id === id);
   const name = item ? item.name : 'this income source';
@@ -6666,6 +6717,16 @@ function editIncome(id) {
   document.getElementById('modal-payday2').value = item.payDay2 || '';
   populateIncomeDest(item.destAccount || '');
   toggleIncomeScheduleFields();
+  const delBtn = document.getElementById('income-modal-delete-btn');
+  if (delBtn) delBtn.style.display = '';
+  // "End" only makes sense for a repeating source that has not already been
+  // ended on or before the month being viewed.
+  const endBtn = document.getElementById('income-modal-end-btn');
+  if (endBtn) {
+    const alreadyEnded = item.endYr !== undefined &&
+      (item.endYr < calYear || (item.endYr === calYear && item.endMo < calMonth));
+    endBtn.style.display = (item.oneTime || alreadyEnded) ? 'none' : '';
+  }
   document.getElementById('income-modal').classList.add('open');
 }
 
@@ -6684,6 +6745,10 @@ function openIncomeModal() {
   document.getElementById('modal-repeat').checked = true;
   populateIncomeDest('');
   toggleIncomeScheduleFields();
+  const delBtn = document.getElementById('income-modal-delete-btn');
+  if (delBtn) delBtn.style.display = 'none';
+  const endBtn = document.getElementById('income-modal-end-btn');
+  if (endBtn) endBtn.style.display = 'none';
   document.getElementById('income-modal').classList.add('open');
   setTimeout(() => document.getElementById('modal-name').focus(), 150);
 }
@@ -8254,6 +8319,7 @@ function buildPaymentMap(yr, mo) {
     if (item.oneTime && (item.oneTimeYr !== yr || item.oneTimeMo !== mo)) return;
     // Repeating items: skip months before they were created
     if (item.startYr !== undefined && (yr < item.startYr || (yr === item.startYr && mo < item.startMo))) return;
+    if (incomeEnded(item, yr, mo)) return;
     const defaultAmt = getIncomeAmountForMonth(item.id, yr, mo);
     const days = getIncomeDaysInMonth(item, yr, mo);
     const effectiveDays = days.length > 0 ? days : [dim]; // fallback to end of month if no days configured
