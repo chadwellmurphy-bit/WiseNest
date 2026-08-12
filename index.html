@@ -4106,7 +4106,7 @@ function setSyncProvider(p)  { localStorage.setItem(nsKey('sync_provider'), p); 
 // safe to embed - PKCE is what keeps the flow secure without a secret. With
 // this set, users never see an app-key field and connection codes carry only
 // the token.
-const DBX_BUILTIN_KEY = '';
+const DBX_BUILTIN_KEY = 'l880xuyakplkzve';
 function dbxAppKey()      { return localStorage.getItem(nsKey('dbx_app_key')) || DBX_BUILTIN_KEY; }
 function dbxRefresh()     { return localStorage.getItem(nsKey('dbx_refresh')) || ''; }
 function dbxConfigured()  { return !!(dbxAppKey() && dbxRefresh()); }
@@ -4712,8 +4712,10 @@ function refreshSyncSetupUI() {
   if (st) {
     st.textContent = on
       ? '\u2713 Connected. This device syncs through Dropbox.'
-      : (dbxAppKey() ? 'App key saved. Tap Connect to sign in.'
-                     : 'Create an app in the Dropbox App Console with App Folder access, then paste its app key below.');
+      : (DBX_BUILTIN_KEY
+          ? 'Sign in with your Dropbox account. Your budget is stored in your own Dropbox, not on our servers.'
+          : (dbxAppKey() ? 'App key saved. Tap Connect to sign in.'
+                         : 'Create an app in the Dropbox App Console with App Folder access, then paste its app key below.'));
     st.style.color = on ? 'var(--income-green)' : 'var(--muted)';
   }
 }
