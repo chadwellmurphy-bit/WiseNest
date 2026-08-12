@@ -2058,6 +2058,8 @@
   .toggle-slider:before { content:''; position:absolute; width:14px; height:14px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
   .toggle-switch input:checked + .toggle-slider { background:var(--accent); }
   .toggle-switch input:checked + .toggle-slider:before { transform:translateX(14px); }
+
+  .reset-btn {
     width: 100%; padding: 10px;
     background: transparent; border: 1px solid var(--expense-red);
     color: var(--expense-red); border-radius: 8px; font-size: 0.9286em;
@@ -2389,7 +2391,7 @@
       <button class="save-btn" id="save-btn" onclick="handleSave()" style="flex:1;justify-content:center"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"></path><path d="M11 1v4H5V1M5 9h6"></path></svg> Save</button>
       <button id="sync-pull-btn" onclick="handlePull()" title="Pull latest data from Gist" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:10px;cursor:pointer;padding:0 12px;font-size:1.1em;transition:all .15s;flex-shrink:0" onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↻</button>
     </div>
-    <div id="sync-status" onclick="dataDirty ? openUnsavedReview() : showGistSetup()" style="font-size:0.8571em;font-family:var(--font-mono);color:var(--text);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
+    <div id="sync-status" onclick="syncStatusClick()" style="font-size:0.8571em;font-family:var(--font-mono);color:var(--text);text-align:center;margin-top:8px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='transparent'">☁️ Log in</div>
   </div>
 </nav>
 
@@ -4061,7 +4063,182 @@ async function checkStartupConflict() {
 // ─── GIST SYNC ──────────────────────────────────────────────────
 function gistToken()  { return localStorage.getItem(nsKey('gist_token')) || ''; }
 function gistId()     { return localStorage.getItem(nsKey('gist_id')) || ''; }
-function gistConfigured() { return !!(gistToken() && gistId()); }
+function gistTokenRaw() { return gistToken(); }
+function gistIdRaw()    { return gistId(); }
+function gistIsConfigured() { return !!(gistToken() && gistId()); }
+// ─── SYNC PROVIDERS ──────────────────────────────────────────────
+// Two backends are supported. Gist is the original; Dropbox stores the same
+// JSON in the user's own Dropbox, inside an app-scoped folder that is
+// invisible to the rest of their account. Everything above this layer calls
+// gistConfigured() / pullFromGist() / pushToGist(), which dispatch on the
+// active provider, so the rest of the app is unaware of the difference.
+
+const DBX_FILE   = '/budget-data.json';
+const DBX_AUTH   = 'https://www.dropbox.com/oauth2/authorize';
+const DBX_TOKEN  = 'https://api.dropboxapi.com/oauth2/token';
+
+function syncProvider()      { return localStorage.getItem(nsKey('sync_provider')) || (gistTokenRaw() && gistIdRaw() ? 'gist' : ''); }
+function setSyncProvider(p)  { localStorage.setItem(nsKey('sync_provider'), p); }
+
+function dbxAppKey()      { return localStorage.getItem(nsKey('dbx_app_key')) || ''; }
+function dbxRefresh()     { return localStorage.getItem(nsKey('dbx_refresh')) || ''; }
+function dbxConfigured()  { return !!(dbxAppKey() && dbxRefresh()); }
+// Dropbox returns a revision string for every write. Sending it back with the
+// next upload turns a blind overwrite into a checked one: if another device
+// wrote in the meantime the revs differ and Dropbox refuses, rather than
+// silently discarding their work.
+function dbxRev()         { return localStorage.getItem(nsKey('dbx_rev')) || ''; }
+function setDbxRev(r)     { if (r) localStorage.setItem(nsKey('dbx_rev'), r); }
+
+// The redirect URI must match what is registered in the Dropbox App Console
+// exactly, query string and hash excluded.
+function dbxRedirectUri() { return location.origin + location.pathname; }
+
+function b64url(bytes) {
+  let s = '';
+  new Uint8Array(bytes).forEach(b => { s += String.fromCharCode(b); });
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function dbxBeginAuth() {
+  const key = dbxAppKey();
+  if (!key) { alert('Enter your Dropbox app key first.'); return; }
+  // PKCE: a random verifier is kept locally; only its SHA-256 hash travels to
+  // Dropbox, so no app secret has to be embedded in this file.
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(64)));
+  const digest   = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  localStorage.setItem(nsKey('dbx_verifier'), verifier);
+  const params = new URLSearchParams({
+    client_id: key,
+    response_type: 'code',
+    code_challenge: b64url(digest),
+    code_challenge_method: 'S256',
+    token_access_type: 'offline',      // required to receive a refresh token
+    redirect_uri: dbxRedirectUri(),
+  });
+  location.href = DBX_AUTH + '?' + params.toString();
+}
+
+// Called once on load. If Dropbox has redirected back with ?code=, trade it
+// for a refresh token and scrub the URL so a reload cannot replay it.
+async function dbxHandleRedirect() {
+  const qs = new URLSearchParams(location.search);
+  const code = qs.get('code');
+  if (!code) return false;
+  const verifier = localStorage.getItem(nsKey('dbx_verifier')) || '';
+  history.replaceState({}, '', dbxRedirectUri());
+  if (!verifier) return false;
+  try {
+    const res = await fetch(DBX_TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code, grant_type: 'authorization_code',
+        client_id: dbxAppKey(), code_verifier: verifier,
+        redirect_uri: dbxRedirectUri(),
+      }),
+    });
+    const j = await res.json();
+    if (!res.ok || !j.refresh_token) throw new Error(j.error_description || 'no refresh token returned');
+    localStorage.setItem(nsKey('dbx_refresh'), j.refresh_token);
+    localStorage.removeItem(nsKey('dbx_verifier'));
+    _dbxAccess = j.access_token || '';
+    _dbxAccessExp = Date.now() + ((j.expires_in || 14400) - 60) * 1000;
+    setSyncProvider('dropbox');
+    return true;
+  } catch (e) {
+    lastGistError = 'Dropbox sign-in failed: ' + (e.message || e);
+    return false;
+  }
+}
+
+let _dbxAccess = '';
+let _dbxAccessExp = 0;
+
+// Access tokens are short-lived; swap the refresh token for a fresh one as
+// needed. No app secret required, which is the whole point of PKCE.
+async function dbxAccessToken() {
+  if (_dbxAccess && Date.now() < _dbxAccessExp) return _dbxAccess;
+  const res = await fetch(DBX_TOKEN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: dbxRefresh(),
+      client_id: dbxAppKey(),
+    }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || !j.access_token) throw new Error(j.error_description || 'Dropbox session expired — sign in again');
+  _dbxAccess = j.access_token;
+  _dbxAccessExp = Date.now() + ((j.expires_in || 14400) - 60) * 1000;
+  return _dbxAccess;
+}
+
+async function dbxPull() {
+  const tok = await dbxAccessToken();
+  const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + tok,
+      'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    // First run: nothing saved yet. Not an error.
+    if (res.status === 409 && /not_found/.test(txt)) return null;
+    throw new Error('Dropbox download failed: HTTP ' + res.status + ' ' + txt.slice(0, 120));
+  }
+  const meta = res.headers.get('dropbox-api-result');
+  if (meta) { try { setDbxRev(JSON.parse(meta).rev); } catch (e) {} }
+  const text = await res.text();
+  if (!text) return null;
+  return JSON.parse(text);
+}
+
+async function dbxPush() {
+  const tok = await dbxAccessToken();
+  const rev = dbxRev();
+  const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + tok,
+      'Content-Type': 'application/octet-stream',
+      'Dropbox-API-Arg': JSON.stringify({
+        path: DBX_FILE,
+        mode: rev ? { '.tag': 'update', update: rev } : { '.tag': 'overwrite' },
+        mute: true,
+      }),
+    },
+    body: JSON.stringify(buildSavePayload(), null, 2),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    if (res.status === 409 && /conflict/.test(txt)) {
+      throw new Error('Another device saved first. Pull before saving so their changes are not lost.');
+    }
+    throw new Error('Dropbox upload failed: HTTP ' + res.status + ' ' + txt.slice(0, 120));
+  }
+  const j = await res.json().catch(() => ({}));
+  setDbxRev(j.rev);
+  return true;
+}
+
+function dbxSignOut() {
+  ['dbx_refresh', 'dbx_rev', 'dbx_verifier'].forEach(k => localStorage.removeItem(nsKey(k)));
+  _dbxAccess = ''; _dbxAccessExp = 0;
+  setSyncProvider('');
+  setSyncStatus('idle');
+}
+
+// ── Dispatcher. Everything else in the app calls gistConfigured(), so adding
+// ── a provider does not touch any caller.
+function gistConfigured() {
+  const p = syncProvider();
+  return p === 'dropbox' ? dbxConfigured() : gistIsConfigured();
+}
+
 
 function buildSavePayload() {
   return {
@@ -4094,6 +4271,7 @@ function buildSavePayload() {
 }
 
 async function pushToGist() {
+  if (syncProvider() === 'dropbox') return dbxPush();
   const payload = JSON.stringify(buildSavePayload(), null, 2);
   const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
     method: 'PATCH',
@@ -4113,6 +4291,7 @@ async function pushToGist() {
 }
 
 async function pullFromGist() {
+  if (syncProvider() === 'dropbox') return dbxPull();
   const res = await fetch(`https://api.github.com/gists/${gistId()}?_=${Date.now()}`, {
     headers: {
       'Authorization': `Bearer ${gistToken()}`,
@@ -4167,6 +4346,7 @@ function saveGistConfig() {
   if (!token || !id) { alert('Please enter both the token and Gist ID.'); return; }
   localStorage.setItem(nsKey('gist_token'), token);
   localStorage.setItem(nsKey('gist_id'), id);
+  setSyncProvider('gist');
   diagBox.style.display = 'none';
   closeGistSetup();
   setSyncStatus('syncing', 'Connecting\u2026');
@@ -4197,6 +4377,13 @@ async function loadFromGist() {
   // Phase 1: fetch. A failure here really is network/auth/404.
   try {
     saved = await pullFromGist();
+    // Dropbox returns null on a first run when the file does not exist yet.
+    // Nothing to apply, but the connection is sound.
+    if (saved === null && syncProvider() === 'dropbox') {
+      lastGistError = '';
+      if (typeof clearDirty === 'function') clearDirty();
+      return true;
+    }
   } catch (e) {
     lastGistError = (e && e.message) ? e.message : String(e);
     // A genuine offline failure surfaces as a TypeError from fetch itself;
@@ -4278,8 +4465,164 @@ async function loadFromGist() {
   }
 }
 
+function dbxConnect() {
+  const key = document.getElementById('dbx-key-input').value.trim();
+  if (!key) { alert('Paste your Dropbox app key first.'); return; }
+  localStorage.setItem(nsKey('dbx_app_key'), key);
+  dbxBeginAuth();
+}
+
+// Keep the Dropbox half of the sync modal in step with the stored state.
+// Set-up always wins over review: with no provider connected there is nothing
+// to compare against, so offering a conflict review would be a dead end.
+function syncStatusClick() {
+  if (!gistConfigured()) { showGistSetup(); return; }
+  if (typeof dataDirty !== 'undefined' && dataDirty) { openUnsavedReview(); return; }
+  showGistSetup();
+}
+
+// ── Connection code ──────────────────────────────────────────────
+// Packages the app key and refresh token into one string so a second device
+// can talk to the same app folder. This is the direct equivalent of handing
+// over a Gist ID and token, and it is exactly as sensitive: whoever holds it
+// can read and write the budget. It grants nothing else - an App Folder token
+// cannot touch the rest of the Dropbox account.
+
+// Base64 of UTF-8. btoa alone throws on any non-Latin-1 byte.
+function b64encodeUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+function b64decodeUtf8(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function dbxShareCode() {
+  if (!dbxConfigured()) return '';
+  return 'WN1-' + b64encodeUtf8(JSON.stringify({
+    v: 1, k: dbxAppKey(), r: dbxRefresh(),
+  }));
+}
+
+// Kept hidden until asked for, so the code is not sitting on screen whenever
+// the sync modal happens to be open.
+function dbxShowShareCode() {
+  const ta = document.getElementById('dbx-share-code');
+  if (!ta) return;
+  if (ta.style.display === 'none') {
+    ta.value = dbxShareCode();
+    ta.style.display = '';
+  } else {
+    ta.style.display = 'none';
+  }
+}
+
+function dbxCopyShareCode(ev) {
+  const code = dbxShareCode();
+  if (!code) { alert('Connect Dropbox on this device first.'); return; }
+  const btn = ev && ev.target;
+  const done = () => {
+    if (!btn) return;
+    const t = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = t; }, 1500);
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(code).then(done).catch(() => prompt('Copy this:', code));
+  else prompt('Copy this:', code);
+}
+
+function dbxJoinFromCode() {
+  const el = document.getElementById('dbx-join-code');
+  const raw = (el ? el.value : '').trim();
+  if (!raw) { alert('Paste a connection code first.'); return; }
+  if (raw.indexOf('WN1-') !== 0) { alert('That does not look like a WiseNest connection code.'); return; }
+  let cfg;
+  try {
+    cfg = JSON.parse(b64decodeUtf8(raw.slice(4)));
+  } catch (e) { alert('That code could not be read. Check it was copied in full.'); return; }
+  if (!cfg || !cfg.k || !cfg.r) { alert('That code is missing part of its data.'); return; }
+  if (dataDirty && !confirm('This device has unsaved changes that have not been pushed.\n\nJoining will replace them with the shared budget. Continue?')) return;
+
+  localStorage.setItem(nsKey('dbx_app_key'), cfg.k);
+  localStorage.setItem(nsKey('dbx_refresh'), cfg.r);
+  // The rev belongs to the other device's last write, so drop it and let the
+  // first pull establish ours.
+  localStorage.removeItem(nsKey('dbx_rev'));
+  _dbxAccess = ''; _dbxAccessExp = 0;
+  setSyncProvider('dropbox');
+  if (el) el.value = '';
+
+  closeGistSetup();
+  setSyncStatus('syncing', 'Joining\u2026');
+  loadFromGist().then(ok => {
+    if (ok) {
+      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage();
+      updateSummary(); renderCalendar();
+      applyBusinessVisibility(); renderBusiness();
+      undoStack.length = 0; syncUndoBtn();
+      setSyncStatus('ok', '\u2713 Joined shared budget');
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    } else {
+      setSyncStatus('error', lastGistError || 'Could not load the shared budget');
+      setTimeout(() => setSyncStatus('idle'), 6000);
+    }
+  });
+}
+
+function copyDbxRedirect(ev) {
+  const uri = dbxRedirectUri();
+  const btn = ev && ev.target;
+  const done = () => {
+    if (!btn) return;
+    const t = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = t; }, 1500);
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(uri).then(done).catch(() => prompt('Copy this:', uri));
+  else prompt('Copy this:', uri);
+}
+
+function refreshSyncSetupUI() {
+  const uriEl = document.getElementById('dbx-redirect-uri');
+  if (uriEl) {
+    // Opened straight off disk there is no origin to return to, so OAuth
+    // cannot work at all - say so here rather than failing over at Dropbox.
+    if (location.protocol === 'file:') {
+      uriEl.textContent = 'Unavailable \u2014 this page was opened from a local file. Dropbox sign-in needs the app served over https.';
+      uriEl.style.color = 'var(--expense-red)';
+    } else {
+      uriEl.textContent = dbxRedirectUri();
+      uriEl.style.color = 'var(--text)';
+    }
+  }
+  const st  = document.getElementById('dbx-status');
+  const out = document.getElementById('dbx-signout');
+  const key = document.getElementById('dbx-key-input');
+  if (key && !key.value) key.value = dbxAppKey();
+  const on = dbxConfigured() && syncProvider() === 'dropbox';
+  const share = document.getElementById('dbx-share-panel');
+  if (share) share.style.display = on ? '' : 'none';
+  const codeTa = document.getElementById('dbx-share-code');
+  if (codeTa) { codeTa.style.display = 'none'; codeTa.value = ''; }
+  if (out) out.style.display = dbxConfigured() ? '' : 'none';
+  if (st) {
+    st.textContent = on
+      ? '\u2713 Connected. This device syncs through Dropbox.'
+      : (dbxAppKey() ? 'App key saved. Tap Connect to sign in.'
+                     : 'Create an app in the Dropbox App Console with App Folder access, then paste its app key below.');
+    st.style.color = on ? 'var(--income-green)' : 'var(--muted)';
+  }
+}
+
 function showGistSetup() {
   document.getElementById('gist-setup-modal').classList.add('open');
+  refreshSyncSetupUI();
   // Pre-fill from localStorage
   const t = localStorage.getItem(nsKey('gist_token')) || '';
   const g = localStorage.getItem(nsKey('gist_id')) || '';
@@ -11487,6 +11830,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   detectAppVersion();
   syncUndoBtn();
   seedCleanState();
+  // If Dropbox has just redirected back with an authorization code, finish the
+  // exchange before the startup sync decides whether we are configured.
+  if (location.search.indexOf('code=') !== -1) {
+    dbxHandleRedirect().then(ok => {
+      if (!ok) { setSyncStatus('error', lastGistError || 'Dropbox sign-in failed'); return; }
+      setSyncStatus('syncing', 'Connecting\u2026');
+      loadFromGist().then(good => {
+        if (good) {
+          renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
+          renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage();
+          updateSummary(); renderCalendar();
+          applyBusinessVisibility(); renderBusiness();
+          setSyncStatus('ok', '\u2713 Dropbox connected');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        } else {
+          setSyncStatus('error', lastGistError || 'Could not load data');
+        }
+      });
+    });
+  }
   syncDirtyUI();
   setTimeout(shrinkStoredLogos, 1200);
 
@@ -12459,6 +12822,49 @@ document.addEventListener('DOMContentLoaded', async () => {
       <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">&#x2601;&#xFE0F; Log in to Sync</h2>
       <a href="#" onclick="event.preventDefault();document.getElementById('gist-help-modal').classList.add('open')" style="font-size:0.8em;color:var(--accent);text-decoration:none">Help ?</a>
     </div>
+    <div id="dbx-section" style="margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)">
+      <div style="font-family:var(--font-mono);font-size:0.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Dropbox &middot; recommended</div>
+      <div id="dbx-status" style="font-size:0.85em;color:var(--muted);line-height:1.5;margin-bottom:10px"></div>
+      <div class="form-field" style="margin-bottom:10px">
+        <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">App key</label>
+        <input type="text" id="dbx-key-input" placeholder="from the Dropbox App Console" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" style="flex:1;padding:10px" onclick="dbxConnect()">Connect Dropbox</button>
+        <button class="btn-secondary" id="dbx-signout" style="flex:none;padding:10px 14px;display:none" onclick="dbxSignOut();refreshSyncSetupUI()">Sign out</button>
+      </div>
+      <div id="dbx-share-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:none">
+        <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Share this budget</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;margin-bottom:8px">
+          Send this code to someone else so their device reads and writes the same budget. Treat it like a password &mdash; anyone holding it can open your budget.
+        </div>
+        <textarea id="dbx-share-code" readonly rows="3" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.85em;padding:9px 12px;resize:none;display:none"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-secondary" style="flex:1;padding:8px;font-size:0.8em" onclick="dbxShowShareCode()">Show code</button>
+          <button class="btn-secondary" style="flex:1;padding:8px;font-size:0.8em" onclick="dbxCopyShareCode(event)">Copy</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Join a shared budget</div>
+        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;margin-bottom:8px">
+          Paste a code from someone who has already connected. This device will then use their budget instead of its own.
+        </div>
+        <textarea id="dbx-join-code" rows="3" placeholder="paste connection code" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.85em;padding:9px 12px;resize:none"></textarea>
+        <button class="btn-primary" style="width:100%;margin-top:8px;padding:9px;font-size:0.85em" onclick="dbxJoinFromCode()">Join</button>
+      </div>
+
+      <div style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Redirect URI &mdash; register this exactly</div>
+        <div id="dbx-redirect-uri" style="font-family:var(--font-mono);font-size:0.78em;color:var(--text);word-break:break-all;line-height:1.4"></div>
+        <button class="btn-secondary" style="width:100%;margin-top:8px;padding:7px;font-size:0.8em" onclick="copyDbxRedirect(event)">Copy</button>
+      </div>
+      <div style="font-size:0.78em;color:var(--muted);line-height:1.5;margin-top:9px">
+        Your data is stored in an app folder inside your own Dropbox. It counts against your Dropbox space, not ours, and we never see it.
+      </div>
+    </div>
+
+    <div style="font-family:var(--font-mono);font-size:0.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">GitHub Gist &middot; legacy</div>
     <div class="form-field" style="margin-bottom:14px">
       <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Access Token</label>
       <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
