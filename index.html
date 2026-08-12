@@ -4620,11 +4620,13 @@ function dbxJoinFromCode() {
 // The help panel used to describe Gist only. It now follows whichever pane
 // is open, since the two providers share nothing in common.
 const SYNC_HELP = {
-  dropbox: '<p style="margin:0 0 12px"><strong style="color:var(--text)">Connecting</strong><br>'
-    + 'Tap Connect Dropbox and sign in with your Dropbox account. Your budget is written to a single file in '
+  dropbox: '<p style="margin:0 0 12px"><strong style="color:var(--text)">Sign in to Dropbox</strong><br>'
+    + 'Use this if the budget is yours. You sign in with your own Dropbox account and your budget is written to a single file in '
     + '<strong>Apps / WiseNest</strong> inside your own Dropbox. The app can only ever see that folder, never the rest of your account.</p>'
-    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Sharing with someone else</strong><br>'
-    + 'Once connected, use Share this budget to copy a connection code and send it to them. On their device they open this screen, choose Dropbox, and paste it into Join a shared budget. Both devices then read and write the same file.</p>'
+    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Join with a code</strong><br>'
+    + 'Use this if someone else set the budget up and sent you a code. You do not need a Dropbox account of your own \u2014 the code carries everything needed.</p>'
+    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Sharing your budget</strong><br>'
+    + 'Once connected, Share this budget copies a code to send. Both devices then read and write the same file.</p>'
     + '<p style="margin:0 0 12px"><strong style="color:var(--text)">If two people edit at once</strong><br>'
     + 'Whoever saves second is told their copy is out of date rather than overwriting the other. Pull first, then redo the change.</p>'
     + '<p style="margin:0"><strong style="color:var(--text)">Disconnecting</strong><br>'
@@ -4704,10 +4706,9 @@ function refreshSyncSetupUI() {
   const vis = {
     'dbx-key-field':      dev && !on,
     'dbx-redirect-panel': dev && !on,
-    'dbx-connect-btn':    !on,
+    'dbx-choices':        !on,
     'dbx-share-panel':    on,
     'dbx-signout':        on,
-    'dbx-blurb':          !on,
   };
   Object.keys(vis).forEach(id => {
     const el = document.getElementById(id);
@@ -4720,10 +4721,9 @@ function refreshSyncSetupUI() {
   if (st) {
     st.textContent = on
       ? '\u2713 Connected. This device syncs through Dropbox.'
-      : (DBX_BUILTIN_KEY
-          ? 'Sign in with your Dropbox account. Your budget is stored in your own Dropbox, not on our servers.'
-          : (dbxAppKey() ? 'App key saved. Tap Connect to sign in.'
-                         : 'Create an app in the Dropbox App Console with App Folder access, then paste its app key below.'));
+      : (DBX_BUILTIN_KEY || dbxAppKey()
+          ? ''
+          : 'Create an app in the Dropbox App Console with App Folder access, then paste its app key below.');
     st.style.color = on ? 'var(--income-green)' : 'var(--muted)';
   }
 }
@@ -12963,19 +12963,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         <span class="sync-choice-title">GitHub Gist</span>
         <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
       </button>
-      <button class="sync-choice" onclick="showSyncPane('join')">
-        <span class="sync-choice-mark" style="color:var(--income-green)">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-        </span>
-        <span class="sync-choice-title">Join with a code</span>
-        <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
-      </button>
     </div>
 
     <div id="join-section" style="display:none">
-      <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
+      <button class="sync-back" onclick="showSyncPane('dropbox')">&lsaquo; Back</button>
       <div style="font-size:0.9em;color:var(--muted);line-height:1.6;margin-bottom:16px">
-        Paste the connection code sent to you by whoever set up the budget. This device will then share their budget. You do not need an account of your own.
+        Paste the code you were sent.
       </div>
       <textarea id="dbx-join-code" rows="3" placeholder="paste connection code" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:12px;resize:none"></textarea>
       <button class="btn-primary" style="width:100%;margin-top:12px;padding:13px;font-size:1.0em" onclick="dbxJoinFromCode()">Join budget</button>
@@ -12983,12 +12976,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     <div id="dbx-section" style="display:none">
       <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
-      <div id="dbx-status" style="font-size:0.85em;color:var(--muted);line-height:1.5;margin-bottom:10px"></div>
+      <div id="dbx-status" style="font-size:0.9em;color:var(--muted);line-height:1.5;margin-bottom:16px"></div>
+      <div id="dbx-choices">
+        <button class="sync-choice" onclick="dbxConnect()">
+          <span class="sync-choice-mark" style="color:#0061FF">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19.5l6-4 6 4-6 4-6-4z"/></svg>
+          </span>
+          <span class="sync-choice-title">Sign in to Dropbox</span>
+          <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <button class="sync-choice" onclick="showSyncPane('join')">
+          <span class="sync-choice-mark" style="color:var(--income-green)">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+          </span>
+          <span class="sync-choice-title">Join with a code</span>
+          <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
+        </button>
+      </div>
       <div class="form-field" id="dbx-key-field" style="margin-bottom:10px">
         <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">App key</label>
         <input type="text" id="dbx-key-input" placeholder="from the Dropbox App Console" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
       </div>
-      <button class="btn-primary" id="dbx-connect-btn" style="width:100%;padding:11px" onclick="dbxConnect()">Connect Dropbox</button>
+
       <div id="dbx-share-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:none">
         <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Share this budget</div>
         <button type="button" onclick="toggleShareWarning()" style="background:none;border:none;padding:0;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font-sans);font-size:0.78em;color:var(--debt-amber)">
@@ -13009,9 +13018,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Redirect URI &mdash; register this exactly</div>
         <div id="dbx-redirect-uri" style="font-family:var(--font-mono);font-size:0.78em;color:var(--text);word-break:break-all;line-height:1.4"></div>
         <button class="btn-secondary" style="width:100%;margin-top:8px;padding:7px;font-size:0.8em" onclick="copyDbxRedirect(event)">Copy</button>
-      </div>
-      <div id="dbx-blurb" style="font-size:0.78em;color:var(--muted);line-height:1.5;margin-top:9px">
-        Your data is stored in an app folder inside your own Dropbox. It counts against your Dropbox space, not ours, and we never see it.
       </div>
       <button class="btn-secondary" id="dbx-signout" style="width:100%;margin-top:14px;display:none;font-size:0.85em" onclick="dbxSignOut();refreshSyncSetupUI()">Disconnect Dropbox</button>
     </div>
