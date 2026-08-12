@@ -1177,6 +1177,28 @@
   .duepick-chip.sel { background: var(--accent2); border-color: var(--accent2); color: #fff; }
   .duepick-chip:hover { color: var(--text); }
 
+  /* Provider chooser on the sync modal */
+  .sync-choice {
+    width: 100%; box-sizing: border-box;
+    display: flex; align-items: center; gap: 13px;
+    padding: 15px 14px; margin-bottom: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; cursor: pointer; text-align: left;
+    transition: border-color .15s;
+  }
+  .sync-choice:hover { border-color: var(--accent); }
+  .sync-choice-mark { flex-shrink: 0; display: flex; align-items: center; }
+  .sync-choice-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .sync-choice-title { font-family: var(--font-sans); font-size: 1.0em; font-weight: 600; color: var(--text); }
+  .sync-choice-sub { font-family: var(--font-mono); font-size: 0.72em; color: var(--muted); }
+  .sync-choice-go { flex-shrink: 0; color: var(--muted); font-size: 1.3em; line-height: 1; }
+  .sync-back {
+    background: none; border: none; cursor: pointer; padding: 0; margin-bottom: 14px;
+    font-family: var(--font-mono); font-size: 0.74em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .sync-back:hover { color: var(--text); }
+
   .form-field {
     margin-bottom: 16px;
   }
@@ -4080,7 +4102,12 @@ const DBX_TOKEN  = 'https://api.dropboxapi.com/oauth2/token';
 function syncProvider()      { return localStorage.getItem(nsKey('sync_provider')) || (gistTokenRaw() && gistIdRaw() ? 'gist' : ''); }
 function setSyncProvider(p)  { localStorage.setItem(nsKey('sync_provider'), p); }
 
-function dbxAppKey()      { return localStorage.getItem(nsKey('dbx_app_key')) || ''; }
+// Paste your Dropbox app key here before shipping. It is a public identifier,
+// safe to embed - PKCE is what keeps the flow secure without a secret. With
+// this set, users never see an app-key field and connection codes carry only
+// the token.
+const DBX_BUILTIN_KEY = '';
+function dbxAppKey()      { return localStorage.getItem(nsKey('dbx_app_key')) || DBX_BUILTIN_KEY; }
 function dbxRefresh()     { return localStorage.getItem(nsKey('dbx_refresh')) || ''; }
 function dbxConfigured()  { return !!(dbxAppKey() && dbxRefresh()); }
 // Dropbox returns a revision string for every write. Sending it back with the
@@ -4502,11 +4529,14 @@ function b64decodeUtf8(b64) {
   return new TextDecoder().decode(bytes);
 }
 
+// The refresh token is already ~64 chars of high-entropy text, so wrapping it
+// in JSON and base64 only inflated it by 60 characters. The token is emitted
+// raw. The app key is omitted whenever it is built in, since the receiving
+// device already has it.
 function dbxShareCode() {
   if (!dbxConfigured()) return '';
-  return 'WN1-' + b64encodeUtf8(JSON.stringify({
-    v: 1, k: dbxAppKey(), r: dbxRefresh(),
-  }));
+  const tok = dbxRefresh();
+  return DBX_BUILTIN_KEY ? ('WN-' + tok) : ('WN-' + dbxAppKey() + '~' + tok);
 }
 
 // Kept hidden until asked for, so the code is not sitting on screen whenever
@@ -4540,12 +4570,23 @@ function dbxJoinFromCode() {
   const el = document.getElementById('dbx-join-code');
   const raw = (el ? el.value : '').trim();
   if (!raw) { alert('Paste a connection code first.'); return; }
-  if (raw.indexOf('WN1-') !== 0) { alert('That does not look like a WiseNest connection code.'); return; }
-  let cfg;
-  try {
-    cfg = JSON.parse(b64decodeUtf8(raw.slice(4)));
-  } catch (e) { alert('That code could not be read. Check it was copied in full.'); return; }
-  if (!cfg || !cfg.k || !cfg.r) { alert('That code is missing part of its data.'); return; }
+  let cfg = null;
+  if (raw.indexOf('WN-') === 0) {
+    // Short form: WN-<token>, or WN-<appkey>~<token> when no key is built in.
+    const body = raw.slice(3);
+    const sep = body.indexOf('~');
+    cfg = (sep === -1)
+      ? { k: dbxAppKey(), r: body }
+      : { k: body.slice(0, sep), r: body.slice(sep + 1) };
+  } else if (raw.indexOf('WN1-') === 0) {
+    // Legacy long form, still accepted so older codes keep working.
+    try { cfg = JSON.parse(b64decodeUtf8(raw.slice(4))); }
+    catch (e) { alert('That code could not be read. Check it was copied in full.'); return; }
+  } else {
+    alert('That does not look like a WiseNest connection code.'); return;
+  }
+  if (!cfg || !cfg.r) { alert('That code is missing its access token.'); return; }
+  if (!cfg.k) { alert('This device does not know the Dropbox app key. Open the Dropbox pane and enter it first.'); return; }
   if (dataDirty && !confirm('This device has unsaved changes that have not been pushed.\n\nJoining will replace them with the shared budget. Continue?')) return;
 
   localStorage.setItem(nsKey('dbx_app_key'), cfg.k);
@@ -4589,6 +4630,9 @@ function copyDbxRedirect(ev) {
 }
 
 function refreshSyncSetupUI() {
+  // With a built-in key there is nothing for the user to paste.
+  const keyField = document.getElementById('dbx-key-field');
+  if (keyField) keyField.style.display = DBX_BUILTIN_KEY ? 'none' : '';
   const uriEl = document.getElementById('dbx-redirect-uri');
   if (uriEl) {
     // Opened straight off disk there is no origin to return to, so OAuth
@@ -4620,8 +4664,23 @@ function refreshSyncSetupUI() {
   }
 }
 
+// '' shows the chooser; 'dropbox' or 'gist' opens that pane.
+function showSyncPane(which) {
+  const map = { dropbox: 'dbx-section', gist: 'gist-section' };
+  const chooser = document.getElementById('sync-chooser');
+  if (chooser) chooser.style.display = which ? 'none' : '';
+  Object.keys(map).forEach(k => {
+    const el = document.getElementById(map[k]);
+    if (el) el.style.display = (which === k) ? '' : 'none';
+  });
+  if (which === 'dropbox') refreshSyncSetupUI();
+}
+
 function showGistSetup() {
   document.getElementById('gist-setup-modal').classList.add('open');
+  // Land on whichever provider is already in use, otherwise the chooser.
+  const p = syncProvider();
+  showSyncPane(p === 'dropbox' ? 'dropbox' : (p === 'gist' ? 'gist' : ''));
   refreshSyncSetupUI();
   // Pre-fill from localStorage
   const t = localStorage.getItem(nsKey('gist_token')) || '';
@@ -12822,10 +12881,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">&#x2601;&#xFE0F; Log in to Sync</h2>
       <a href="#" onclick="event.preventDefault();document.getElementById('gist-help-modal').classList.add('open')" style="font-size:0.8em;color:var(--accent);text-decoration:none">Help ?</a>
     </div>
-    <div id="dbx-section" style="margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)">
-      <div style="font-family:var(--font-mono);font-size:0.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Dropbox &middot; recommended</div>
+    <div id="sync-chooser">
+      <div style="font-size:0.88em;color:var(--muted);line-height:1.55;margin-bottom:16px">
+        Choose where your budget is stored. Either way the data stays in your own account.
+      </div>
+      <button class="sync-choice" onclick="showSyncPane('dropbox')">
+        <span class="sync-choice-mark" style="color:#0061FF">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19.5l6-4 6 4-6 4-6-4z"/></svg>
+        </span>
+        <span class="sync-choice-text">
+          <span class="sync-choice-title">Dropbox</span>
+          <span class="sync-choice-sub">Recommended &middot; sign in with your account</span>
+        </span>
+        <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
+      </button>
+      <button class="sync-choice" onclick="showSyncPane('gist')">
+        <span class="sync-choice-mark" style="color:var(--muted)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l-5-6 5-6M15 6l5 6-5 6"/></svg>
+        </span>
+        <span class="sync-choice-text">
+          <span class="sync-choice-title">GitHub Gist</span>
+          <span class="sync-choice-sub">Legacy &middot; needs a token and Gist ID</span>
+        </span>
+        <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
+      </button>
+    </div>
+
+    <div id="dbx-section" style="display:none">
+      <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
       <div id="dbx-status" style="font-size:0.85em;color:var(--muted);line-height:1.5;margin-bottom:10px"></div>
-      <div class="form-field" style="margin-bottom:10px">
+      <div class="form-field" id="dbx-key-field" style="margin-bottom:10px">
         <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">App key</label>
         <input type="text" id="dbx-key-input" placeholder="from the Dropbox App Console" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
       </div>
@@ -12835,8 +12920,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
       <div id="dbx-share-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:none">
         <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Share this budget</div>
-        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;margin-bottom:8px">
-          Send this code to someone else so their device reads and writes the same budget. Treat it like a password &mdash; anyone holding it can open your budget.
+        <div style="font-size:0.8em;color:var(--text);line-height:1.5;margin-bottom:8px;background:rgba(255,159,46,.10);border:1px solid rgba(255,159,46,.35);border-radius:8px;padding:9px 11px">
+          <strong>This code is a key, not a link.</strong> It is not encrypted &mdash; anyone who sees it can read and change your budget. Send it the way you would send a password, and never post it anywhere public.
         </div>
         <textarea id="dbx-share-code" readonly rows="3" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.85em;padding:9px 12px;resize:none;display:none"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px">
@@ -12864,7 +12949,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     </div>
 
-    <div style="font-family:var(--font-mono);font-size:0.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">GitHub Gist &middot; legacy</div>
+    <div id="gist-section" style="display:none">
+    <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
     <div class="form-field" style="margin-bottom:14px">
       <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Access Token</label>
       <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
@@ -12882,6 +12968,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     <div style="padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
       <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem(nsKey('gist_token'));localStorage.removeItem(nsKey('gist_id'));closeGistSetup();setSyncStatus('idle','\u2601\uFE0F Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
+    </div>
     </div>
   </div>
 </div>
