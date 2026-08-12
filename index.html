@@ -2919,7 +2919,7 @@
             <div class="setting-row">
               <div>
                 <div class="setting-label">Sync payload size</div>
-                <div class="setting-sub">Over 1 MB and the Gist API stops returning data inline</div>
+                <div class="setting-sub" id="payload-size-note"></div>
               </div>
               <div id="payload-size" style="font-family:var(--font-mono);font-size:0.8571em;color:var(--muted);flex-shrink:0">—</div>
             </div>
@@ -3811,8 +3811,17 @@ function refreshPayloadSize() {
   if (!el) return;
   const label = payloadSizeLabel();
   el.textContent = label;
-  const big = /MB/.test(label) && parseFloat(label) >= 1;
+  // The 1 MB ceiling is a GitHub Gist limit. Dropbox has no equivalent, so
+  // the warning would be misleading there.
+  const onGist = syncProvider() !== 'dropbox';
+  const big = onGist && /MB/.test(label) && parseFloat(label) >= 1;
   el.style.color = big ? 'var(--expense-red)' : 'var(--muted)';
+  const note = document.getElementById('payload-size-note');
+  if (note) {
+    note.textContent = onGist
+      ? 'Over 1 MB and the Gist API stops returning data inline'
+      : 'Stored in your Dropbox app folder';
+  }
 }
 
 // One-off pass over logos already stored at full resolution. Runs after load;
