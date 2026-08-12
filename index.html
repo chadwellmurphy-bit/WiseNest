@@ -1180,18 +1180,19 @@
   /* Provider chooser on the sync modal */
   .sync-choice {
     width: 100%; box-sizing: border-box;
-    display: flex; align-items: center; gap: 13px;
-    padding: 15px 14px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 16px;
+    padding: 24px 20px; margin-bottom: 12px;
     background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 12px; cursor: pointer; text-align: left;
+    border-radius: 14px; cursor: pointer; text-align: left;
     transition: border-color .15s;
   }
   .sync-choice:hover { border-color: var(--accent); }
   .sync-choice-mark { flex-shrink: 0; display: flex; align-items: center; }
-  .sync-choice-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .sync-choice-title { font-family: var(--font-sans); font-size: 1.0em; font-weight: 600; color: var(--text); }
-  .sync-choice-sub { font-family: var(--font-mono); font-size: 0.72em; color: var(--muted); }
-  .sync-choice-go { flex-shrink: 0; color: var(--muted); font-size: 1.3em; line-height: 1; }
+  .sync-choice-title {
+    flex: 1; min-width: 0;
+    font-family: var(--font-sans); font-size: 1.35em; font-weight: 600; color: var(--text);
+  }
+  .sync-choice-go { flex-shrink: 0; color: var(--muted); font-size: 1.5em; line-height: 1; }
   .sync-back {
     background: none; border: none; cursor: pointer; padding: 0; margin-bottom: 14px;
     font-family: var(--font-mono); font-size: 0.74em; color: var(--muted);
@@ -4634,6 +4635,12 @@ const SYNC_HELP = {
     + "The long ID found in your Gist's URL. The data file inside the Gist must be named <strong>budget-data.json</strong>.</p>"
     + '<p style="margin:0"><strong style="color:var(--text)">Size limit</strong><br>'
     + 'GitHub stops returning file contents inline past 1 MB. If your data grows beyond that, Dropbox is the more reliable option.</p>',
+  join: '<p style="margin:0 0 12px"><strong style="color:var(--text)">What a connection code does</strong><br>'
+    + 'It points this device at someone else\'s budget. You both then read and write the same data, so a change on one device shows on the other after saving.</p>'
+    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Do I need my own account?</strong><br>'
+    + 'No. The code carries everything needed. You do not need a Dropbox or GitHub account to join.</p>'
+    + '<p style="margin:0"><strong style="color:var(--text)">Careful</strong><br>'
+    + 'Joining replaces whatever budget is currently on this device. If you have unsaved work here, save or export it first.</p>',
   '': '<p style="margin:0 0 12px"><strong style="color:var(--text)">Dropbox</strong><br>'
     + 'Recommended. Sign in with your Dropbox account and your budget is stored in an app folder there. Nothing to create beforehand.</p>'
     + '<p style="margin:0"><strong style="color:var(--text)">GitHub Gist</strong><br>'
@@ -4644,9 +4651,11 @@ function openSyncHelp() {
   // Match the pane the user is actually looking at.
   const dbxOpen  = (document.getElementById('dbx-section')  || {}).style;
   const gistOpen = (document.getElementById('gist-section') || {}).style;
+  const joinOpen = (document.getElementById('join-section') || {}).style;
   let key = '';
   if (dbxOpen && dbxOpen.display !== 'none') key = 'dropbox';
   else if (gistOpen && gistOpen.display !== 'none') key = 'gist';
+  else if (joinOpen && joinOpen.display !== 'none') key = 'join';
   const body = document.getElementById('sync-help-body');
   if (body) body.innerHTML = SYNC_HELP[key] || SYNC_HELP[''];
   document.getElementById('gist-help-modal').classList.add('open');
@@ -4696,7 +4705,6 @@ function refreshSyncSetupUI() {
     'dbx-key-field':      dev && !on,
     'dbx-redirect-panel': dev && !on,
     'dbx-connect-btn':    !on,
-    'dbx-join-panel':     !on,
     'dbx-share-panel':    on,
     'dbx-signout':        on,
     'dbx-blurb':          !on,
@@ -4722,7 +4730,7 @@ function refreshSyncSetupUI() {
 
 // '' shows the chooser; 'dropbox' or 'gist' opens that pane.
 function showSyncPane(which) {
-  const map = { dropbox: 'dbx-section', gist: 'gist-section' };
+  const map = { dropbox: 'dbx-section', gist: 'gist-section', join: 'join-section' };
   const chooser = document.getElementById('sync-chooser');
   if (chooser) chooser.style.display = which ? 'none' : '';
   Object.keys(map).forEach(k => {
@@ -12938,29 +12946,39 @@ document.addEventListener('DOMContentLoaded', async () => {
       <a href="#" onclick="event.preventDefault();openSyncHelp()" style="font-size:0.8em;color:var(--accent);text-decoration:none">Help ?</a>
     </div>
     <div id="sync-chooser">
-      <div style="font-size:0.88em;color:var(--muted);line-height:1.55;margin-bottom:16px">
-        Choose where your budget is stored. Either way the data stays in your own account.
+      <div style="font-size:0.95em;color:var(--muted);line-height:1.5;margin-bottom:20px">
+        Where should your budget be stored?
       </div>
       <button class="sync-choice" onclick="showSyncPane('dropbox')">
         <span class="sync-choice-mark" style="color:#0061FF">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19.5l6-4 6 4-6 4-6-4z"/></svg>
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19.5l6-4 6 4-6 4-6-4z"/></svg>
         </span>
-        <span class="sync-choice-text">
-          <span class="sync-choice-title">Dropbox</span>
-          <span class="sync-choice-sub">Recommended &middot; sign in with your account</span>
-        </span>
+        <span class="sync-choice-title">Dropbox</span>
         <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
       </button>
       <button class="sync-choice" onclick="showSyncPane('gist')">
         <span class="sync-choice-mark" style="color:var(--muted)">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l-5-6 5-6M15 6l5 6-5 6"/></svg>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l-5-6 5-6M15 6l5 6-5 6"/></svg>
         </span>
-        <span class="sync-choice-text">
-          <span class="sync-choice-title">GitHub Gist</span>
-          <span class="sync-choice-sub">Legacy &middot; needs a token and Gist ID</span>
-        </span>
+        <span class="sync-choice-title">GitHub Gist</span>
         <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
       </button>
+      <button class="sync-choice" onclick="showSyncPane('join')">
+        <span class="sync-choice-mark" style="color:var(--income-green)">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+        </span>
+        <span class="sync-choice-title">Join with a code</span>
+        <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
+      </button>
+    </div>
+
+    <div id="join-section" style="display:none">
+      <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
+      <div style="font-size:0.9em;color:var(--muted);line-height:1.6;margin-bottom:16px">
+        Paste the connection code sent to you by whoever set up the budget. This device will then share their budget. You do not need an account of your own.
+      </div>
+      <textarea id="dbx-join-code" rows="3" placeholder="paste connection code" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:12px;resize:none"></textarea>
+      <button class="btn-primary" style="width:100%;margin-top:12px;padding:13px;font-size:1.0em" onclick="dbxJoinFromCode()">Join budget</button>
     </div>
 
     <div id="dbx-section" style="display:none">
@@ -12985,15 +13003,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           <button class="btn-secondary" style="flex:1;padding:8px;font-size:0.8em" onclick="dbxShowShareCode()">Show code</button>
           <button class="btn-secondary" style="flex:1;padding:8px;font-size:0.8em" onclick="dbxCopyShareCode(event)">Copy</button>
         </div>
-      </div>
-
-      <div id="dbx-join-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
-        <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Join a shared budget</div>
-        <div style="font-size:0.8em;color:var(--muted);line-height:1.5;margin-bottom:8px">
-          Paste a code from someone who has already connected. This device will then use their budget instead of its own.
-        </div>
-        <textarea id="dbx-join-code" rows="3" placeholder="paste connection code" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.85em;padding:9px 12px;resize:none"></textarea>
-        <button class="btn-primary" style="width:100%;margin-top:8px;padding:9px;font-size:0.85em" onclick="dbxJoinFromCode()">Join</button>
       </div>
 
       <div id="dbx-redirect-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
