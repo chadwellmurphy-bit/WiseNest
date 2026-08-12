@@ -1200,6 +1200,16 @@
   }
   .sync-back:hover { color: var(--text); }
 
+  /* iOS Safari zooms the whole page when a focused field is under 16px, then
+     zooms back out on blur - which reads as the screen jumping. The base font
+     here is 14px, so every em-sized field trips it. Force 16px on touch
+     devices; inline styles need the !important to be overridden. */
+  @media (pointer: coarse) {
+    input[type="text"], input[type="password"], input[type="number"],
+    input[type="date"], input[type="email"], input[type="search"],
+    textarea, select { font-size: 16px !important; }
+  }
+
   .form-field {
     margin-bottom: 16px;
   }
