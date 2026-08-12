@@ -4630,9 +4630,6 @@ function copyDbxRedirect(ev) {
 }
 
 function refreshSyncSetupUI() {
-  // With a built-in key there is nothing for the user to paste.
-  const keyField = document.getElementById('dbx-key-field');
-  if (keyField) keyField.style.display = DBX_BUILTIN_KEY ? 'none' : '';
   const uriEl = document.getElementById('dbx-redirect-uri');
   if (uriEl) {
     // Opened straight off disk there is no origin to return to, so OAuth
@@ -4650,8 +4647,24 @@ function refreshSyncSetupUI() {
   const key = document.getElementById('dbx-key-input');
   if (key && !key.value) key.value = dbxAppKey();
   const on = dbxConfigured() && syncProvider() === 'dropbox';
+  // Two states. Before connecting: what you need to connect. After: only what
+  // you would actually use again. Setup fields are developer-only and vanish
+  // once the app key is built in.
+  const dev = !DBX_BUILTIN_KEY;
+  const vis = {
+    'dbx-key-field':      dev && !on,
+    'dbx-redirect-panel': dev && !on,
+    'dbx-connect-btn':    !on,
+    'dbx-join-panel':     !on,
+    'dbx-share-panel':    on,
+    'dbx-signout':        on,
+    'dbx-blurb':          !on,
+  };
+  Object.keys(vis).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = vis[id] ? '' : 'none';
+  });
   const share = document.getElementById('dbx-share-panel');
-  if (share) share.style.display = on ? '' : 'none';
   const codeTa = document.getElementById('dbx-share-code');
   if (codeTa) { codeTa.style.display = 'none'; codeTa.value = ''; }
   if (out) out.style.display = dbxConfigured() ? '' : 'none';
@@ -12914,10 +12927,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">App key</label>
         <input type="text" id="dbx-key-input" placeholder="from the Dropbox App Console" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
       </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn-primary" style="flex:1;padding:10px" onclick="dbxConnect()">Connect Dropbox</button>
-        <button class="btn-secondary" id="dbx-signout" style="flex:none;padding:10px 14px;display:none" onclick="dbxSignOut();refreshSyncSetupUI()">Sign out</button>
-      </div>
+      <button class="btn-primary" id="dbx-connect-btn" style="width:100%;padding:11px" onclick="dbxConnect()">Connect Dropbox</button>
       <div id="dbx-share-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:none">
         <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Share this budget</div>
         <div style="font-size:0.8em;color:var(--text);line-height:1.5;margin-bottom:8px;background:rgba(255,159,46,.10);border:1px solid rgba(255,159,46,.35);border-radius:8px;padding:9px 11px">
@@ -12930,7 +12940,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
       </div>
 
-      <div style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+      <div id="dbx-join-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
         <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Join a shared budget</div>
         <div style="font-size:0.8em;color:var(--muted);line-height:1.5;margin-bottom:8px">
           Paste a code from someone who has already connected. This device will then use their budget instead of its own.
@@ -12939,14 +12949,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         <button class="btn-primary" style="width:100%;margin-top:8px;padding:9px;font-size:0.85em" onclick="dbxJoinFromCode()">Join</button>
       </div>
 
-      <div style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+      <div id="dbx-redirect-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
         <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Redirect URI &mdash; register this exactly</div>
         <div id="dbx-redirect-uri" style="font-family:var(--font-mono);font-size:0.78em;color:var(--text);word-break:break-all;line-height:1.4"></div>
         <button class="btn-secondary" style="width:100%;margin-top:8px;padding:7px;font-size:0.8em" onclick="copyDbxRedirect(event)">Copy</button>
       </div>
-      <div style="font-size:0.78em;color:var(--muted);line-height:1.5;margin-top:9px">
+      <div id="dbx-blurb" style="font-size:0.78em;color:var(--muted);line-height:1.5;margin-top:9px">
         Your data is stored in an app folder inside your own Dropbox. It counts against your Dropbox space, not ours, and we never see it.
       </div>
+      <button class="btn-secondary" id="dbx-signout" style="width:100%;margin-top:14px;display:none;font-size:0.85em" onclick="dbxSignOut();refreshSyncSetupUI()">Disconnect Dropbox</button>
     </div>
 
     <div id="gist-section" style="display:none">
