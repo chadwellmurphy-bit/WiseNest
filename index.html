@@ -1194,11 +1194,14 @@
   }
   .sync-choice-go { flex-shrink: 0; color: var(--muted); font-size: 1.5em; line-height: 1; }
   .sync-back {
-    background: none; border: none; cursor: pointer; padding: 0; margin-bottom: 14px;
-    font-family: var(--font-mono); font-size: 0.74em; color: var(--muted);
-    text-transform: uppercase; letter-spacing: .08em;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    cursor: pointer; padding: 8px 14px; margin-bottom: 18px;
+    border-radius: 999px;
+    font-family: var(--font-sans); font-size: 0.9em; color: var(--text);
+    transition: border-color .15s;
   }
-  .sync-back:hover { color: var(--text); }
+  .sync-back:hover { border-color: var(--accent); }
 
   /* iOS Safari zooms the whole page when a focused field is under 16px, then
      zooms back out on blur - which reads as the screen jumping. The base font
@@ -4563,13 +4566,12 @@ function dbxShareCode() {
 // the sync modal happens to be open.
 function dbxShowShareCode() {
   const ta = document.getElementById('dbx-share-code');
+  const btn = document.getElementById('dbx-showcode-btn');
   if (!ta) return;
-  if (ta.style.display === 'none') {
-    ta.value = dbxShareCode();
-    ta.style.display = '';
-  } else {
-    ta.style.display = 'none';
-  }
+  const showing = ta.style.display === 'none';
+  if (showing) { ta.value = dbxShareCode(); ta.style.display = ''; }
+  else { ta.style.display = 'none'; }
+  if (btn) btn.textContent = showing ? 'Hide code' : 'Show code';
 }
 
 function dbxCopyShareCode(ev) {
@@ -4736,6 +4738,8 @@ function refreshSyncSetupUI() {
   const share = document.getElementById('dbx-share-panel');
   const codeTa = document.getElementById('dbx-share-code');
   if (codeTa) { codeTa.style.display = 'none'; codeTa.value = ''; }
+  const showBtn = document.getElementById('dbx-showcode-btn');
+  if (showBtn) showBtn.textContent = 'Show code';
   if (out) out.style.display = dbxConfigured() ? '' : 'none';
   if (st) {
     st.textContent = on
@@ -13009,7 +13013,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     <div id="dbx-section" style="display:none">
       <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
-      <div id="dbx-status" style="font-size:0.9em;color:var(--muted);line-height:1.5;margin-bottom:16px"></div>
+      <div id="dbx-status" style="font-size:1.05em;color:var(--muted);line-height:1.5;margin-bottom:18px"></div>
       <div id="dbx-choices">
         <button class="sync-choice" onclick="dbxConnect()">
           <span class="sync-choice-mark" style="color:#0061FF">
@@ -13031,9 +13035,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         <input type="text" id="dbx-key-input" placeholder="from the Dropbox App Console" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
       </div>
 
-      <div id="dbx-share-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:none">
+      <div id="dbx-share-panel" style="margin-top:12px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px">
-          <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Share this budget</div>
+          <div style="font-family:var(--font-mono);font-size:0.78em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Share this budget</div>
           <button type="button" onclick="toggleShareWarning()" aria-label="About sharing safely" style="background:none;border:none;padding:0;cursor:pointer;display:flex;align-items:center;color:var(--debt-amber)">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.9v.1"/></svg>
           </button>
@@ -13043,8 +13047,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         <textarea id="dbx-share-code" readonly rows="3" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.85em;padding:9px 12px;resize:none;display:none"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn-secondary" style="flex:1;padding:8px;font-size:0.8em" onclick="dbxShowShareCode()">Show code</button>
-          <button class="btn-secondary" style="flex:1;padding:8px;font-size:0.8em" onclick="dbxCopyShareCode(event)">Copy</button>
+          <button class="btn-secondary" id="dbx-showcode-btn" style="flex:1;padding:12px;font-size:0.95em" onclick="dbxShowShareCode()">Show code</button>
+          <button class="btn-secondary" style="flex:1;padding:12px;font-size:0.95em" onclick="dbxCopyShareCode(event)">Copy</button>
         </div>
       </div>
 
@@ -13053,7 +13057,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div id="dbx-redirect-uri" style="font-family:var(--font-mono);font-size:0.78em;color:var(--text);word-break:break-all;line-height:1.4"></div>
         <button class="btn-secondary" style="width:100%;margin-top:8px;padding:7px;font-size:0.8em" onclick="copyDbxRedirect(event)">Copy</button>
       </div>
-      <button class="btn-secondary" id="dbx-signout" style="width:100%;margin-top:14px;display:none;font-size:0.85em" onclick="dbxSignOut();refreshSyncSetupUI()">Disconnect Dropbox</button>
+      <button class="btn-secondary" id="dbx-signout" style="width:100%;margin-top:16px;display:none;font-size:0.95em;padding:13px;color:var(--expense-red);border-color:var(--expense-red)" onclick="dbxSignOut();refreshSyncSetupUI()">Disconnect Dropbox</button>
     </div>
 
     <div id="gist-section" style="display:none">
