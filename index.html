@@ -4720,7 +4720,7 @@ function refreshSyncSetupUI() {
   if (out) out.style.display = dbxConfigured() ? '' : 'none';
   if (st) {
     st.textContent = on
-      ? '\u2713 Connected. This device syncs through Dropbox.'
+      ? '\u2713 Connected'
       : (DBX_BUILTIN_KEY || dbxAppKey()
           ? ''
           : 'Create an app in the Dropbox App Console with App Folder access, then paste its app key below.');
@@ -4729,7 +4729,21 @@ function refreshSyncSetupUI() {
 }
 
 // '' shows the chooser; 'dropbox' or 'gist' opens that pane.
+// The heading described one state of a screen that now has several.
+function syncModalTitle(which) {
+  const el = document.getElementById('sync-modal-title');
+  if (!el) return;
+  if (which === 'join')  { el.textContent = 'Join a budget'; return; }
+  if (which === 'gist')  { el.textContent = gistIsConfigured() ? 'GitHub Gist' : 'Log in with Gist'; return; }
+  if (which === 'dropbox') {
+    el.textContent = (dbxConfigured() && syncProvider() === 'dropbox') ? 'Dropbox' : 'Log in with Dropbox';
+    return;
+  }
+  el.textContent = 'Log in to Sync';
+}
+
 function showSyncPane(which) {
+  syncModalTitle(which);
   const map = { dropbox: 'dbx-section', gist: 'gist-section', join: 'join-section' };
   const chooser = document.getElementById('sync-chooser');
   if (chooser) chooser.style.display = which ? 'none' : '';
@@ -12942,7 +12956,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 <div class="modal-overlay" id="gist-setup-modal" onclick="if(event.target===this)closeGistSetup()" style="z-index:1100">
   <div class="modal" style="max-width:420px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <h2 style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">&#x2601;&#xFE0F; Log in to Sync</h2>
+      <h2 id="sync-modal-title" style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">Sync</h2>
       <a href="#" onclick="event.preventDefault();openSyncHelp()" style="font-size:0.8em;color:var(--accent);text-decoration:none">Help ?</a>
     </div>
     <div id="sync-chooser">
@@ -12999,11 +13013,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
 
       <div id="dbx-share-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:none">
-        <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Share this budget</div>
-        <button type="button" onclick="toggleShareWarning()" style="background:none;border:none;padding:0;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font-sans);font-size:0.78em;color:var(--debt-amber)">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.9v.1"/></svg>
-          Treat this like a password
-        </button>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px">
+          <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Share this budget</div>
+          <button type="button" onclick="toggleShareWarning()" aria-label="About sharing safely" style="background:none;border:none;padding:0;cursor:pointer;display:flex;align-items:center;color:var(--debt-amber)">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.9v.1"/></svg>
+          </button>
+        </div>
         <div id="dbx-share-warning" style="display:none;font-size:0.8em;color:var(--text);line-height:1.5;margin-bottom:8px;background:rgba(255,159,46,.10);border:1px solid rgba(255,159,46,.35);border-radius:8px;padding:9px 11px">
           The code is not encrypted &mdash; anyone who sees it can read and change your budget. Send it the way you would send a password, and never post it anywhere public.
         </div>
