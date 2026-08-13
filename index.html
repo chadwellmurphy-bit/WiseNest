@@ -1249,9 +1249,9 @@
     gap: 10px;
     margin-top: 24px;
   }
-  /* Blue, deliberately NOT the accent lime used by Save-to-Gist. These
+  /* Blue, deliberately NOT the accent lime used by Save. These
      buttons commit a change into memory; only the top-bar/panel Save pushes
-     to the Gist, so they must not look like the same action. */
+     to the cloud, so they must not look like the same action. */
   .btn-primary {
     flex: 1;
     padding: 10px;
@@ -3535,6 +3535,18 @@ const DATA_KEYS = [APP_NS + ':data'];
 const SETTINGS_KEY = APP_NS + ':settings';
 function nsKey(name) { return APP_NS + ':' + name; }
 
+// Gist sync has been removed. Clear anything it left behind so a GitHub token
+// with write access is not sitting in localStorage on a device that once used
+// it, and so a stale provider setting cannot select a backend that is gone.
+(function purgeGistCredentials() {
+  try {
+    ['gist_token', 'gist_id'].forEach(k => localStorage.removeItem(nsKey(k)));
+    if (localStorage.getItem(nsKey('sync_provider')) === 'gist') {
+      localStorage.removeItem(nsKey('sync_provider'));
+    }
+  } catch (e) {}
+})();
+
 // Export all app data as a downloadable JSON file
 function exportDataFile() {
   try {
@@ -3768,7 +3780,7 @@ function fromDateInput(str) {
 
 // ─── LOGO IMAGE HANDLING ─────────────────────────────────────────
 // Logos render at ~34px. Storing a full-resolution camera photo as base64
-// bloats the sync payload by megabytes, and past 1MB the Gist API stops
+// bloats the sync payload by megabytes, which slows every save and pull
 // returning file contents inline. Everything is downscaled on the way in.
 const LOGO_MAX_PX = 128;
 const LOGO_BIG_BYTES = 24000;   // anything above this is worth re-compressing
@@ -3830,16 +3842,13 @@ function refreshPayloadSize() {
   if (!el) return;
   const label = payloadSizeLabel();
   el.textContent = label;
-  // The 1 MB ceiling is a GitHub Gist limit. Dropbox has no equivalent, so
-  // the warning would be misleading there.
-  const onGist = syncProvider() !== 'dropbox';
-  const big = onGist && /MB/.test(label) && parseFloat(label) >= 1;
-  el.style.color = big ? 'var(--expense-red)' : 'var(--muted)';
+  el.style.color = 'var(--muted)';
   const note = document.getElementById('payload-size-note');
   if (note) {
-    note.textContent = onGist
-      ? 'Over 1 MB and the Gist API stops returning data inline'
-      : 'Stored in your Dropbox app folder';
+    const p = syncProvider();
+    note.textContent = p === 'onedrive' ? 'Stored in your OneDrive app folder'
+                     : p === 'dropbox'  ? 'Stored in your Dropbox app folder'
+                     : 'Stored on this device only';
   }
 }
 
@@ -3874,7 +3883,7 @@ function shrinkStoredLogos() {
 }
 
 // ─── UNSAVED CHANGES REVIEW ──────────────────────────────────────
-// Lets you see exactly what is pending on this device, and whether the Gist
+// Lets you see exactly what is pending on this device, and whether the cloud copy
 // has moved on since this device last synced (i.e. you saved from elsewhere),
 // before choosing which copy wins.
 
@@ -3883,7 +3892,7 @@ let _ucRemoteState = 'unknown';  // 'match' | 'ahead' | 'error' | 'none'
 
 function _ucParse(str) { try { return JSON.parse(str); } catch (e) { return null; } }
 
-// A Gist payload uses buildSavePayload() key names; captureState() uses its
+// A sync payload uses buildSavePayload() key names; captureState() uses its
 // own. Map one onto the other so a single diff routine handles both.
 function payloadToCaptureShape(pl) {
   if (!pl) return null;
@@ -4053,9 +4062,9 @@ async function openUnsavedReview(remoteAlreadyKnown) {
   modal.classList.add('open');
   if (remoteAlreadyKnown) return;
 
-  if (!gistConfigured()) { _ucRemoteState = 'none'; renderUnsavedReview(false); return; }
+  if (!syncConfigured()) { _ucRemoteState = 'none'; renderUnsavedReview(false); return; }
   try {
-    _ucRemote = payloadToCaptureShape(await pullFromGist());
+    _ucRemote = payloadToCaptureShape(await pullFromCloud());
     const cleanObj = cleanState ? _ucParse(cleanState) : null;
     _ucRemoteState = (cleanObj && diffStates(cleanObj, _ucRemote).length) ? 'ahead' : 'match';
   } catch (e) {
@@ -4072,11 +4081,11 @@ function closeUnsavedReview() {
 function unsavedPushMine() { closeUnsavedReview(); handleSave(); }
 
 async function unsavedUseCloud() {
-  if (!gistConfigured()) { closeUnsavedReview(); showGistSetup(); return; }
+  if (!syncConfigured()) { closeUnsavedReview(); showSyncSetup(); return; }
   if (!confirm('Discard the unsaved changes on this device and replace them with the cloud copy?\n\nThis cannot be undone.')) return;
   closeUnsavedReview();
   setSyncStatus('syncing');
-  const ok = await loadFromGist();
+  const ok = await loadFromCloud();
   if (ok) {
     renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
     renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage();
@@ -4091,13 +4100,13 @@ async function unsavedUseCloud() {
   }
 }
 
-// On launch with pending work, quietly check whether the Gist moved on while
+// On launch with pending work, quietly check whether the cloud copy moved on while
 // this device was away. If it did, surface the choice instead of assuming
 // this device is authoritative.
 async function checkStartupConflict() {
-  if (!gistConfigured() || !dataDirty || !cleanState) return;
+  if (!syncConfigured() || !dataDirty || !cleanState) return;
   try {
-    _ucRemote = payloadToCaptureShape(await pullFromGist());
+    _ucRemote = payloadToCaptureShape(await pullFromCloud());
     const cleanObj = _ucParse(cleanState);
     if (cleanObj && diffStates(cleanObj, _ucRemote).length) {
       _ucRemoteState = 'ahead';
@@ -4112,29 +4121,24 @@ async function checkStartupConflict() {
 }
 
 // ─── GIST SYNC ──────────────────────────────────────────────────
-function gistToken()  { return localStorage.getItem(nsKey('gist_token')) || ''; }
-function gistId()     { return localStorage.getItem(nsKey('gist_id')) || ''; }
-function gistTokenRaw() { return gistToken(); }
-function gistIdRaw()    { return gistId(); }
-function gistIsConfigured() { return !!(gistToken() && gistId()); }
 // ─── SYNC PROVIDERS ──────────────────────────────────────────────
-// Two backends are supported. Gist is the original; Dropbox stores the same
+// Two backends are supported. Dropbox is the default; both store the same
 // JSON in the user's own Dropbox, inside an app-scoped folder that is
 // invisible to the rest of their account. Everything above this layer calls
-// gistConfigured() / pullFromGist() / pushToGist(), which dispatch on the
+// syncConfigured() / pullFromCloud() / pushToCloud(), which dispatch on the
 // active provider, so the rest of the app is unaware of the difference.
 
 const DBX_FILE   = '/budget-data.json';
 const DBX_AUTH   = 'https://www.dropbox.com/oauth2/authorize';
 const DBX_TOKEN  = 'https://api.dropboxapi.com/oauth2/token';
 
-function syncProvider()      { return localStorage.getItem(nsKey('sync_provider')) || (gistTokenRaw() && gistIdRaw() ? 'gist' : ''); }
+function syncProvider()      { return localStorage.getItem(nsKey('sync_provider')) || ''; }
 // Name of the backend as the user knows it. Everything the user reads should
-// go through this rather than hard-coding 'Gist', so a Dropbox user is never
+// go through this rather than hard-coding one provider, so a user is never
 // shown the name of a service they never set up.
 function providerName() {
   const p = syncProvider();
-  return p === 'dropbox' ? 'Dropbox' : (p === 'gist' ? 'GitHub Gist' : 'sync');
+  return p === 'dropbox' ? 'Dropbox' : (p === 'onedrive' ? 'OneDrive' : 'sync');
 }
 function setSyncProvider(p)  { localStorage.setItem(nsKey('sync_provider'), p); }
 
@@ -4178,18 +4182,15 @@ async function dbxBeginAuth() {
     code_challenge_method: 'S256',
     token_access_type: 'offline',      // required to receive a refresh token
     redirect_uri: dbxRedirectUri(),
+    state: 'wn_dbx',                   // tells the redirect handler whose code this is
   });
   location.href = DBX_AUTH + '?' + params.toString();
 }
 
 // Called once on load. If Dropbox has redirected back with ?code=, trade it
 // for a refresh token and scrub the URL so a reload cannot replay it.
-async function dbxHandleRedirect() {
-  const qs = new URLSearchParams(location.search);
-  const code = qs.get('code');
-  if (!code) return false;
+async function dbxHandleRedirect(code) {
   const verifier = localStorage.getItem(nsKey('dbx_verifier')) || '';
-  history.replaceState({}, '', dbxRedirectUri());
   if (!verifier) return false;
   try {
     const res = await fetch(DBX_TOKEN, {
@@ -4210,7 +4211,7 @@ async function dbxHandleRedirect() {
     setSyncProvider('dropbox');
     return true;
   } catch (e) {
-    lastGistError = 'Dropbox sign-in failed: ' + (e.message || e);
+    lastSyncError = 'Dropbox sign-in failed: ' + (e.message || e);
     return false;
   }
 }
@@ -4295,11 +4296,239 @@ function dbxSignOut() {
   setSyncStatus('idle');
 }
 
-// ── Dispatcher. Everything else in the app calls gistConfigured(), so adding
+// ─── ONEDRIVE (Microsoft Graph) ──────────────────────────────────
+// Same shape as the Dropbox provider: PKCE, no client secret, and a file kept
+// in an app-scoped folder the app cannot see outside of. Two differences worth
+// knowing about, both imposed by Microsoft rather than chosen here:
+//   1. A redirect URI registered as "spa" gets a refresh token that expires
+//      after 24 hours, and renewing it silently needs third-party cookies,
+//      which Safari blocks. So a visible sign-in is required about daily.
+//   2. Files.ReadWrite.AppFolder only exists for personal Microsoft accounts,
+//      hence the /consumers authority - a work or school account is refused at
+//      the sign-in page rather than failing later with a confusing 403.
+const OD_AUTH   = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize';
+const OD_TOKEN  = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token';
+const OD_SCOPE  = 'Files.ReadWrite.AppFolder offline_access';
+const OD_ITEM   = "https://graph.microsoft.com/v1.0/me/drive/special/approot:/budget-data.json";
+
+// Paste the Application (client) ID here once registered, the same way the
+// Dropbox key is built in. It is a public identifier, safe to embed.
+const OD_BUILTIN_ID = '';
+function odClientId()   { return localStorage.getItem(nsKey('od_client_id')) || OD_BUILTIN_ID; }
+function odRefresh()    { return localStorage.getItem(nsKey('od_refresh')) || ''; }
+function odConfigured() { return !!(odClientId() && odRefresh()); }
+// Graph's eTag plays the part Dropbox's rev plays: sent back on write so a
+// second device that saved in the meantime is refused rather than overwritten.
+function odTag()        { return localStorage.getItem(nsKey('od_etag')) || ''; }
+function setOdTag(t)    { if (t) localStorage.setItem(nsKey('od_etag'), t); }
+function odRedirectUri(){ return location.origin + location.pathname; }
+
+async function odBeginAuth() {
+  const id = odClientId();
+  if (!id) { alert('Enter your Application (client) ID first.'); return; }
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(64)));
+  const digest   = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  localStorage.setItem(nsKey('od_verifier'), verifier);
+  const params = new URLSearchParams({
+    client_id: id,
+    response_type: 'code',
+    redirect_uri: odRedirectUri(),
+    scope: OD_SCOPE,
+    code_challenge: b64url(digest),
+    code_challenge_method: 'S256',
+    state: 'wn_od',                    // tells the redirect handler whose code this is
+  });
+  location.href = OD_AUTH + '?' + params.toString();
+}
+
+async function odHandleRedirect(code) {
+  const verifier = localStorage.getItem(nsKey('od_verifier')) || '';
+  if (!verifier) return false;
+  try {
+    const res = await fetch(OD_TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code, grant_type: 'authorization_code',
+        client_id: odClientId(), code_verifier: verifier,
+        redirect_uri: odRedirectUri(), scope: OD_SCOPE,
+      }),
+    });
+    const j = await res.json();
+    if (!res.ok || !j.refresh_token) throw new Error(j.error_description || 'no refresh token returned');
+    localStorage.setItem(nsKey('od_refresh'), j.refresh_token);
+    localStorage.removeItem(nsKey('od_verifier'));
+    _odAccess = j.access_token || '';
+    _odAccessExp = Date.now() + ((j.expires_in || 3600) - 60) * 1000;
+    setSyncProvider('onedrive');
+    return true;
+  } catch (e) {
+    lastSyncError = 'OneDrive sign-in failed: ' + (e.message || e);
+    return false;
+  }
+}
+
+let _odAccess = '';
+let _odAccessExp = 0;
+
+// Microsoft rotates the refresh token on every use and does not extend the
+// original 24-hour window, so the new one must be stored and the expiry is
+// never pushed further out. When it finally lapses the only cure is another
+// visible sign-in, which is what odNeedsSignIn drives.
+async function odAccessToken() {
+  if (_odAccess && Date.now() < _odAccessExp) return _odAccess;
+  const res = await fetch(OD_TOKEN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: odRefresh(),
+      client_id: odClientId(),
+      scope: OD_SCOPE,
+    }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || !j.access_token) {
+    throw new Error('ONEDRIVE_SIGNIN_REQUIRED: ' + (j.error_description || 'the daily sign-in has expired'));
+  }
+  if (j.refresh_token) localStorage.setItem(nsKey('od_refresh'), j.refresh_token);
+  _odAccess = j.access_token;
+  _odAccessExp = Date.now() + ((j.expires_in || 3600) - 60) * 1000;
+  return _odAccess;
+}
+
+function odNeedsSignIn(err) {
+  return /ONEDRIVE_SIGNIN_REQUIRED/.test((err && err.message) || '');
+}
+
+async function odPull() {
+  const tok = await odAccessToken();
+  // Ask for the metadata first and follow the pre-authorised download URL, so
+  // the content request carries no Authorization header and needs no preflight.
+  const meta = await fetch(OD_ITEM + '?select=id,eTag,@microsoft.graph.downloadUrl', {
+    headers: { 'Authorization': 'Bearer ' + tok },
+  });
+  if (meta.status === 404) return null;          // first run, nothing saved yet
+  if (!meta.ok) {
+    const txt = await meta.text().catch(() => '');
+    throw new Error('OneDrive read failed: HTTP ' + meta.status + ' ' + txt.slice(0, 120));
+  }
+  const j = await meta.json();
+  setOdTag(j.eTag);
+  const url = j['@microsoft.graph.downloadUrl'];
+  if (!url) return null;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('OneDrive download failed: HTTP ' + res.status);
+  const text = await res.text();
+  if (!text) return null;
+  return JSON.parse(text);
+}
+
+async function odPush() {
+  const tok = await odAccessToken();
+  const tag = odTag();
+  const headers = { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' };
+  if (tag) headers['if-match'] = tag;
+  const res = await fetch(OD_ITEM + ':/content', {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(buildSavePayload(), null, 2),
+  });
+  if (res.status === 412) {
+    throw new Error('Another device saved first. Pull before saving so their changes are not lost.');
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error('OneDrive upload failed: HTTP ' + res.status + ' ' + txt.slice(0, 120));
+  }
+  const j = await res.json().catch(() => ({}));
+  setOdTag(j.eTag);
+  return true;
+}
+
+function odSignOut() {
+  ['od_refresh', 'od_etag', 'od_verifier'].forEach(k => localStorage.removeItem(nsKey(k)));
+  _odAccess = ''; _odAccessExp = 0;
+  setSyncProvider('');
+  setSyncStatus('idle');
+}
+
+function odConnect() {
+  const el = document.getElementById('od-id-input');
+  const id = el ? el.value.trim() : '';
+  if (!OD_BUILTIN_ID) {
+    if (!id) { alert('Paste your Application (client) ID first.'); return; }
+    localStorage.setItem(nsKey('od_client_id'), id);
+  }
+  odBeginAuth();
+}
+
+function copyOdRedirect(ev) {
+  const uri = odRedirectUri();
+  const btn = ev && ev.target;
+  const done = () => {
+    if (!btn) return;
+    const t = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = t; }, 1500);
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(uri).then(done).catch(() => prompt('Copy this:', uri));
+  else prompt('Copy this:', uri);
+}
+
+function refreshOneDriveUI() {
+  const uriEl = document.getElementById('od-redirect-uri');
+  if (uriEl) {
+    if (location.protocol === 'file:') {
+      uriEl.textContent = 'Unavailable \u2014 this page was opened from a local file. Sign-in needs the app served over https.';
+      uriEl.style.color = 'var(--expense-red)';
+    } else {
+      uriEl.textContent = odRedirectUri();
+      uriEl.style.color = 'var(--text)';
+    }
+  }
+  const idEl = document.getElementById('od-id-input');
+  if (idEl && !idEl.value) idEl.value = odClientId();
+  const on  = odConfigured() && syncProvider() === 'onedrive';
+  const dev = !OD_BUILTIN_ID;
+  const vis = {
+    'od-id-field':       dev && !on,
+    'od-redirect-panel': dev && !on,
+    'od-choices':        !on,
+    'od-daily-note':     !on,
+    'od-signout':        on,
+  };
+  Object.keys(vis).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = vis[id] ? '' : 'none';
+  });
+  const st = document.getElementById('od-status');
+  if (st) {
+    st.textContent = on ? '\u2713 Connected' : '';
+    st.style.color = on ? 'var(--income-green)' : 'var(--muted)';
+  }
+}
+
+// ── OAuth return ─────────────────────────────────────────────────
+// Both providers come back to the same URL with ?code=, so the state parameter
+// decides who to hand it to. An older Dropbox redirect carries no state, so a
+// missing one means Dropbox.
+async function handleOAuthRedirect() {
+  const qs = new URLSearchParams(location.search);
+  const code = qs.get('code');
+  if (!code) return false;
+  const state = qs.get('state') || '';
+  history.replaceState({}, '', dbxRedirectUri());
+  return state === 'wn_od' ? odHandleRedirect(code) : dbxHandleRedirect(code);
+}
+
+// ── Dispatcher. Everything else in the app calls syncConfigured(), so adding
 // ── a provider does not touch any caller.
-function gistConfigured() {
+function syncConfigured() {
   const p = syncProvider();
-  return p === 'dropbox' ? dbxConfigured() : gistIsConfigured();
+  if (p === 'dropbox')  return dbxConfigured();
+  if (p === 'onedrive') return odConfigured();
+  return false;
 }
 
 
@@ -4333,133 +4562,47 @@ function buildSavePayload() {
   };
 }
 
-async function pushToGist() {
-  if (syncProvider() === 'dropbox') return dbxPush();
-  const payload = JSON.stringify(buildSavePayload(), null, 2);
-  const res = await fetch(`https://api.github.com/gists/${gistId()}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${gistToken()}`,
-      'Accept': 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ files: { 'budget-data.json': { content: payload } } }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `HTTP ${res.status}`);
-  }
-  return true;
+async function pushToCloud() {
+  if (syncProvider() === 'onedrive') return odPush();
+  return dbxPush();
 }
 
-async function pullFromGist() {
-  if (syncProvider() === 'dropbox') return dbxPull();
-  const res = await fetch(`https://api.github.com/gists/${gistId()}?_=${Date.now()}`, {
-    headers: {
-      'Authorization': `Bearer ${gistToken()}`,
-      'Accept': 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  });
-  if (!res.ok) {
-    let errMsg = `HTTP ${res.status}`;
-    try { const j = await res.json(); errMsg += ': ' + (j.message || JSON.stringify(j)); } catch(e) {}
-    throw new Error(errMsg);
-  }
-  const data = await res.json();
-  const file = data.files && data.files['budget-data.json'];
-  if (!file) throw new Error('budget-data.json not found in Gist');
-
-  // Use file.content if present and not truncated (avoids extra round-trip)
-  if (file.content && !file.truncated) {
-    const parsed = JSON.parse(file.content);
-    return parsed;
-  }
-
-  // Content truncated (>1MB) or missing — fetch raw_url for the full copy.
-  if (!file.raw_url) throw new Error('Gist file is empty and no raw_url available');
-  const rawUrl = file.raw_url.split('?')[0] + '?_=' + Date.now();
-  let rawContent = null, rawErr = '';
-  // Plain request first: the raw URL carries its own access hash, and the API
-  // bearer token is not valid on gist.githubusercontent.com.
-  for (const opts of [{}, { headers: { 'Authorization': `Bearer ${gistToken()}` } }]) {
-    try {
-      const rawRes = await fetch(rawUrl, opts);
-      if (!rawRes.ok) { rawErr = `raw_url HTTP ${rawRes.status}`; continue; }
-      const txt = await rawRes.text();
-      if (txt) { rawContent = txt; break; }
-      rawErr = 'raw_url returned an empty body';
-    } catch (e) {
-      rawErr = 'raw_url fetch blocked: ' + ((e && e.message) ? e.message : String(e));
-    }
-  }
-  if (!rawContent) throw new Error(rawErr || 'raw_url fetch failed');
-  try {
-    return JSON.parse(rawContent);
-  } catch (e) {
-    throw new Error('raw_url content was not valid JSON (' + rawContent.length + ' bytes)');
-  }
-}
-
-function saveGistConfig() {
-  const token = document.getElementById('gist-token-input').value.trim();
-  const id    = document.getElementById('gist-id-input').value.trim();
-  const diagBox = document.getElementById('gist-diag-box');
-  if (!token || !id) { alert('Please enter both the token and Gist ID.'); return; }
-  localStorage.setItem(nsKey('gist_token'), token);
-  localStorage.setItem(nsKey('gist_id'), id);
-  setSyncProvider('gist');
-  diagBox.style.display = 'none';
-  closeGistSetup();
-  setSyncStatus('syncing', 'Connecting\u2026');
-  loadFromGist().then(ok => {
-    if (ok) {
-      renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
-      renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
-      setSyncStatus('ok', '\u2713 Logged in');
-      setTimeout(() => setSyncStatus('idle'), 3000);
-    } else {
-      setSyncStatus('error', 'Could not load data \u2014 tap to retry');
-      setTimeout(() => setSyncStatus('idle'), 6000);
-    }
-  }).catch(err => {
-    setSyncStatus('error', 'Error: ' + (err.message || 'unknown'));
-    setTimeout(() => setSyncStatus('idle'), 6000);
-  });
+async function pullFromCloud() {
+  if (syncProvider() === 'onedrive') return odPull();
+  return dbxPull();
 }
 
 // Reason the last pull failed, so the UI can say something specific instead
 // of blaming the connection for every possible fault.
-let lastGistError = '';
+let lastSyncError = '';
 
-async function loadFromGist() {
-  if (!gistConfigured()) { lastGistError = 'Gist not configured on this device'; return false; }
-  lastGistError = '';
+async function loadFromCloud() {
+  if (!syncConfigured()) { lastSyncError = 'Sync is not set up on this device'; return false; }
+  lastSyncError = '';
   let saved;
   // Phase 1: fetch. A failure here really is network/auth/404.
   try {
-    saved = await pullFromGist();
+    saved = await pullFromCloud();
     // Dropbox returns null on a first run when the file does not exist yet.
     // Nothing to apply, but the connection is sound.
-    if (saved === null && syncProvider() === 'dropbox') {
-      lastGistError = '';
+    if (saved === null) {
+      lastSyncError = '';
       if (typeof clearDirty === 'function') clearDirty();
       return true;
     }
   } catch (e) {
-    lastGistError = (e && e.message) ? e.message : String(e);
+    lastSyncError = (e && e.message) ? e.message : String(e);
     // A genuine offline failure surfaces as a TypeError from fetch itself;
-    // anything else came back from GitHub and is worth reading literally.
-    if (/Load failed|NetworkError|Failed to fetch/i.test(lastGistError)) {
-      lastGistError = 'No response from GitHub (offline, or the request was blocked): ' + lastGistError;
+    // anything else came back from the provider and is worth reading literally.
+    if (/Load failed|NetworkError|Failed to fetch/i.test(lastSyncError)) {
+      lastSyncError = 'No response from ' + providerName() + ' (offline, or the request was blocked): ' + lastSyncError;
     }
-    console.warn('Gist fetch failed:', lastGistError, e && e.stack);
+    console.warn('Sync fetch failed:', lastSyncError, e && e.stack);
     return false;
   }
   if (!saved || !Object.keys(saved).length) {
-    lastGistError = 'Gist fetched OK but budget-data.json was empty';
-    console.warn(lastGistError);
+    lastSyncError = 'Connected, but budget-data.json came back empty';
+    console.warn(lastSyncError);
     return false;
   }
   // Phase 2: apply. A failure here is a data/code fault, not the connection.
@@ -4489,7 +4632,7 @@ async function loadFromGist() {
       });
     }
     if (saved.monthlyBankAccounts) {
-      // Replace monthlyBankAccounts entirely from gist (authoritative source)
+      // Replace monthlyBankAccounts entirely from the cloud copy (authoritative)
       Object.keys(monthlyBankAccounts).forEach(k => delete monthlyBankAccounts[k]);
       Object.assign(monthlyBankAccounts, saved.monthlyBankAccounts);
     }
@@ -4513,17 +4656,17 @@ async function loadFromGist() {
     budget.expenses.forEach(e => { if (expenseAmounts[e.id] === undefined) expenseAmounts[e.id] = e.amount || 0; });
     budget.income.forEach(i =>   { if (incomeAmounts[i.id]  === undefined) incomeAmounts[i.id]  = i.amount || 0; });
     // also persist locally as fallback — use buildSavePayload() so localStorage
-    // always reflects the actual in-memory state, not the raw gist response
+    // always reflects the actual in-memory state, not the raw sync response
     const localPayload = JSON.stringify(buildSavePayload());
     DATA_KEYS.forEach(k => {
       try { localStorage.setItem(k, localPayload); } catch(e) {}
     });
-    // Local is now a copy of the Gist, so there is nothing unpushed left.
+    // Local now matches the cloud copy, so there is nothing unpushed left.
     if (typeof clearDirty === 'function') clearDirty();
     return true;
   } catch(e) {
-    lastGistError = 'Data loaded but could not be applied: ' + ((e && e.message) ? e.message : String(e));
-    console.warn('Gist apply failed:', lastGistError, e && e.stack);
+    lastSyncError = 'Data loaded but could not be applied: ' + ((e && e.message) ? e.message : String(e));
+    console.warn('Sync apply failed:', lastSyncError, e && e.stack);
     return false;
   }
 }
@@ -4539,15 +4682,15 @@ function dbxConnect() {
 // Set-up always wins over review: with no provider connected there is nothing
 // to compare against, so offering a conflict review would be a dead end.
 function syncStatusClick() {
-  if (!gistConfigured()) { showGistSetup(); return; }
+  if (!syncConfigured()) { showSyncSetup(); return; }
   if (typeof dataDirty !== 'undefined' && dataDirty) { openUnsavedReview(); return; }
-  showGistSetup();
+  showSyncSetup();
 }
 
 // ── Connection code ──────────────────────────────────────────────
 // Packages the app key and refresh token into one string so a second device
 // can talk to the same app folder. This is the direct equivalent of handing
-// over a Gist ID and token, and it is exactly as sensitive: whoever holds it
+// over a password, and it is exactly as sensitive: whoever holds it
 // can read and write the budget. It grants nothing else - an App Folder token
 // cannot touch the rest of the Dropbox account.
 
@@ -4660,9 +4803,9 @@ function dbxJoinFromCode() {
   setSyncProvider('dropbox');
   if (el) el.value = '';
 
-  closeGistSetup();
+  closeSyncSetup();
   setSyncStatus('syncing', 'Joining\u2026');
-  loadFromGist().then(ok => {
+  loadFromCloud().then(ok => {
     if (ok) {
       renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
       renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage();
@@ -4672,13 +4815,13 @@ function dbxJoinFromCode() {
       setSyncStatus('ok', '\u2713 Joined shared budget');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } else {
-      setSyncStatus('error', lastGistError || 'Could not load the shared budget');
+      setSyncStatus('error', lastSyncError || 'Could not load the shared budget');
       setTimeout(() => setSyncStatus('idle'), 6000);
     }
   });
 }
 
-// The help panel used to describe Gist only. It now follows whichever pane
+// The help panel follows whichever pane
 // is open, since the two providers share nothing in common.
 const SYNC_HELP = {
   dropbox: '<p style="margin:0 0 12px"><strong style="color:var(--text)">Sign in to Dropbox</strong><br>'
@@ -4692,36 +4835,38 @@ const SYNC_HELP = {
     + 'Whoever saves second is told their copy is out of date rather than overwriting the other. Pull first, then redo the change.</p>'
     + '<p style="margin:0"><strong style="color:var(--text)">Disconnecting</strong><br>'
     + 'Disconnect Dropbox removes the credentials from this device only. To revoke access everywhere, go to dropbox.com \u2192 Settings \u2192 Connected apps.</p>',
-  gist: '<p style="margin:0 0 12px"><strong style="color:var(--text)">Access Token</strong><br>'
-    + 'Create one at GitHub \u2192 Settings \u2192 Developer settings \u2192 Tokens (classic). It needs the <strong>gist</strong> scope. Your credentials are stored only in this browser and sent directly to GitHub \u2014 never to any other server.</p>'
-    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Gist ID</strong><br>'
-    + "The long ID found in your Gist's URL. The data file inside the Gist must be named <strong>budget-data.json</strong>.</p>"
-    + '<p style="margin:0"><strong style="color:var(--text)">Size limit</strong><br>'
-    + 'GitHub stops returning file contents inline past 1 MB. If your data grows beyond that, Dropbox is the more reliable option.</p>',
+  onedrive: '<p style="margin:0 0 12px"><strong style="color:var(--text)">Sign in to OneDrive</strong><br>'
+    + 'Your budget is written to a single file in <strong>Apps / WiseNest</strong> inside your own OneDrive. The app can only ever see that folder, never the rest of your files.</p>'
+    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Signing in again each day</strong><br>'
+    + 'Microsoft expires the saved sign-in after 24 hours for apps that run in a browser. WiseNest will ask you to sign in again about once a day. Nothing is lost when it does \u2014 your budget stays on the device, and syncing resumes as soon as you are back in.</p>'
+    + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Personal accounts only</strong><br>'
+    + 'This works with a personal Microsoft account (outlook.com, hotmail.com, live.com). Work and school accounts cannot grant app-folder access.</p>'
+    + '<p style="margin:0"><strong style="color:var(--text)">Sharing</strong><br>'
+    + 'Connection codes are Dropbox only. If two people need the same budget, use Dropbox.</p>',
   join: '<p style="margin:0 0 12px"><strong style="color:var(--text)">What a connection code does</strong><br>'
     + 'It points this device at someone else\'s budget. You both then read and write the same data, so a change on one device shows on the other after saving.</p>'
     + '<p style="margin:0 0 12px"><strong style="color:var(--text)">Do I need my own account?</strong><br>'
-    + 'No. The code carries everything needed. You do not need a Dropbox or GitHub account to join.</p>'
+    + 'No. The code carries everything needed. You do not need an account of your own to join.</p>'
     + '<p style="margin:0"><strong style="color:var(--text)">Careful</strong><br>'
     + 'Joining replaces whatever budget is currently on this device. If you have unsaved work here, save or export it first.</p>',
   '': '<p style="margin:0 0 12px"><strong style="color:var(--text)">Dropbox</strong><br>'
-    + 'Recommended. Sign in with your Dropbox account and your budget is stored in an app folder there. Nothing to create beforehand.</p>'
-    + '<p style="margin:0"><strong style="color:var(--text)">GitHub Gist</strong><br>'
-    + 'The original method, kept for existing setups. Needs a personal access token and a Gist you create yourself, and stops working reliably past 1 MB of data.</p>',
+    + 'Recommended. Sign in with your Dropbox account and your budget is stored in an app folder there. It stays signed in, and it is the only option that can share a budget between two people.</p>'
+    + '<p style="margin:0"><strong style="color:var(--text)">OneDrive</strong><br>'
+    + 'Same idea, using a personal Microsoft account instead. Microsoft makes browser apps sign in again every 24 hours, so expect to be asked roughly daily.</p>',
 };
 
 function openSyncHelp() {
   // Match the pane the user is actually looking at.
   const dbxOpen  = (document.getElementById('dbx-section')  || {}).style;
-  const gistOpen = (document.getElementById('gist-section') || {}).style;
+  const odOpen   = (document.getElementById('od-section')   || {}).style;
   const joinOpen = (document.getElementById('join-section') || {}).style;
   let key = '';
   if (dbxOpen && dbxOpen.display !== 'none') key = 'dropbox';
-  else if (gistOpen && gistOpen.display !== 'none') key = 'gist';
+  else if (odOpen && odOpen.display !== 'none') key = 'onedrive';
   else if (joinOpen && joinOpen.display !== 'none') key = 'join';
   const body = document.getElementById('sync-help-body');
   if (body) body.innerHTML = SYNC_HELP[key] || SYNC_HELP[''];
-  document.getElementById('gist-help-modal').classList.add('open');
+  document.getElementById('sync-help-modal').classList.add('open');
 }
 
 function toggleShareWarning() {
@@ -4791,13 +4936,16 @@ function refreshSyncSetupUI() {
   }
 }
 
-// '' shows the chooser; 'dropbox' or 'gist' opens that pane.
+// '' shows the chooser; 'dropbox' or 'onedrive' opens that pane.
 // The heading described one state of a screen that now has several.
 function syncModalTitle(which) {
   const el = document.getElementById('sync-modal-title');
   if (!el) return;
   if (which === 'join')  { el.textContent = 'Join a budget'; return; }
-  if (which === 'gist')  { el.textContent = gistIsConfigured() ? 'GitHub Gist' : 'Log in with Gist'; return; }
+  if (which === 'onedrive') {
+    el.textContent = (odConfigured() && syncProvider() === 'onedrive') ? 'OneDrive' : 'Log in with OneDrive';
+    return;
+  }
   if (which === 'dropbox') {
     el.textContent = (dbxConfigured() && syncProvider() === 'dropbox') ? 'Dropbox' : 'Log in with Dropbox';
     return;
@@ -4807,72 +4955,32 @@ function syncModalTitle(which) {
 
 function showSyncPane(which) {
   syncModalTitle(which);
-  const map = { dropbox: 'dbx-section', gist: 'gist-section', join: 'join-section' };
+  const map = { dropbox: 'dbx-section', onedrive: 'od-section', join: 'join-section' };
   const chooser = document.getElementById('sync-chooser');
   if (chooser) chooser.style.display = which ? 'none' : '';
+  // OneDrive needs an Entra app registration that may not exist. Until a client
+  // ID is present the option is hidden rather than offered and then dead-ended
+  // on a field nobody outside this file could fill in. Setting OD_BUILTIN_ID
+  // brings it back with no other change.
+  const odChoice = document.getElementById('od-choice');
+  if (odChoice) odChoice.style.display = odClientId() ? '' : 'none';
   Object.keys(map).forEach(k => {
     const el = document.getElementById(map[k]);
     if (el) el.style.display = (which === k) ? '' : 'none';
   });
-  if (which === 'dropbox') refreshSyncSetupUI();
+  if (which === 'dropbox')  refreshSyncSetupUI();
+  if (which === 'onedrive') refreshOneDriveUI();
 }
 
-function showGistSetup() {
-  document.getElementById('gist-setup-modal').classList.add('open');
+function showSyncSetup() {
+  document.getElementById('sync-setup-modal').classList.add('open');
   // Land on whichever provider is already in use, otherwise the chooser.
   const p = syncProvider();
-  showSyncPane(p === 'dropbox' ? 'dropbox' : (p === 'gist' ? 'gist' : ''));
+  showSyncPane(p === 'dropbox' ? 'dropbox' : (p === 'onedrive' ? 'onedrive' : ''));
   refreshSyncSetupUI();
-  // Pre-fill from localStorage
-  const t = localStorage.getItem(nsKey('gist_token')) || '';
-  const g = localStorage.getItem(nsKey('gist_id')) || '';
-  if (t) document.getElementById('gist-token-input').value = t;
-  if (g) document.getElementById('gist-id-input').value = g;
 }
-function closeGistSetup() {
-  document.getElementById('gist-setup-modal').classList.remove('open');
-}
-
-async function testGistConnection() {
-  const diagBox = document.getElementById('gist-diag-box');
-  const token = document.getElementById('gist-token-input').value.trim();
-  const id    = document.getElementById('gist-id-input').value.trim();
-  diagBox.style.display = 'block';
-  diagBox.style.color = 'var(--muted)';
-  diagBox.textContent = 'Testing\u2026';
-  if (!token || !id) {
-    diagBox.style.color = 'var(--expense-red)';
-    diagBox.textContent = 'Please enter both a token and Gist ID first.';
-    return;
-  }
-  try {
-    const authRes = await fetch('https://api.github.com/user', {
-      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
-    });
-    if (!authRes.ok) {
-      const j = await authRes.json().catch(function() { return {}; });
-      diagBox.style.color = 'var(--expense-red)';
-      diagBox.textContent = 'Token rejected: HTTP ' + authRes.status + ' \u2014 ' + (j.message || 'unknown. Regenerate token with gist scope.');
-      return;
-    }
-    const user = await authRes.json();
-    const gistRes = await fetch('https://api.github.com/gists/' + id, {
-      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
-    });
-    if (!gistRes.ok) {
-      const j = await gistRes.json().catch(function() { return {}; });
-      diagBox.style.color = 'var(--expense-red)';
-      diagBox.textContent = 'Token OK (as ' + user.login + ') but Gist not found: HTTP ' + gistRes.status + ' \u2014 ' + (j.message || 'check your Gist ID');
-      return;
-    }
-    const gist = await gistRes.json();
-    const hasFile = !!(gist.files && gist.files['budget-data.json']);
-    diagBox.style.color = 'var(--income-green)';
-    diagBox.textContent = '\u2713 Connected as ' + user.login + '. Gist found' + (hasFile ? ' with budget-data.json.' : ' but budget-data.json missing \u2014 save first to create it.');
-  } catch(e) {
-    diagBox.style.color = 'var(--expense-red)';
-    diagBox.textContent = 'Network error: ' + e.message;
-  }
+function closeSyncSetup() {
+  document.getElementById('sync-setup-modal').classList.remove('open');
 }
 
 function setSyncStatus(state, msg) {
@@ -4884,7 +4992,7 @@ function setSyncStatus(state, msg) {
   // At rest, the line reports whether anything is waiting to be pushed.
   const idleText = dirty
     ? '● Unsaved changes'
-    : (gistConfigured() ? '☁️ Synced' : '☁️ Log in');
+    : (syncConfigured() ? '☁️ Synced' : '☁️ Log in');
   const defaults = { idle: idleText, syncing: 'Syncing…', ok: 'Saved', error: 'Sync failed' };
   el.textContent = ((icons[state] ? icons[state] + ' ' : '') + (msg || defaults[state] || '')).trim();
   el.style.color = (state === 'idle' && dirty) ? 'var(--accent)' : (colors[state] || 'var(--text)');
@@ -4894,15 +5002,15 @@ function setSyncStatus(state, msg) {
 function updateSyncStatus(state, msg) { setSyncStatus(state, msg); }
 
 async function handlePull() {
-  if (!gistConfigured()) { showGistSetup(); return; }
-  // A pull replaces in-memory data with the Gist copy. Unlike the accidental
+  if (!syncConfigured()) { showSyncSetup(); return; }
+  // A pull replaces in-memory data with the cloud copy. Unlike the accidental
   // swipe, this is a deliberate button press, so ask rather than refuse.
   if (dataDirty && !confirm('You have unsaved changes.\n\nPulling will replace them with the last saved version. Continue?')) return;
   const btn = document.getElementById('sync-pull-btn');
   btn.textContent = '⏳';
   btn.disabled = true;
   setSyncStatus('syncing');
-  const ok = await loadFromGist();
+  const ok = await loadFromCloud();
   if (ok) {
     renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
     renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
@@ -4910,13 +5018,15 @@ async function handlePull() {
     setSyncStatus('ok', '✓ Syncing...');
     setTimeout(() => setSyncStatus('idle'), 2500);
   } else {
-    const why = lastGistError || 'unknown error';
+    const why = lastSyncError || 'unknown error';
     setSyncStatus('error', 'Pull failed');
     setTimeout(() => setSyncStatus('idle'), 4000);
-    alert('Could not pull from ' + providerName() + '.\n\n' + why + '\n\n'
-      + (syncProvider() === 'dropbox'
-          ? 'If this mentions 401 the Dropbox sign-in has expired — reconnect under ☁️ Sync settings.'
-          : 'If this mentions HTTP 401 the token is wrong or expired; 404 means the Gist ID is wrong. Both are editable under ☁️ Sync settings.'));
+    if (/ONEDRIVE_SIGNIN_REQUIRED/.test(why)) {
+      if (confirm('Your OneDrive sign-in has expired — Microsoft ends it after 24 hours.\n\nSign in again now?')) odBeginAuth();
+    } else {
+      alert('Could not pull from ' + providerName() + '.\n\n' + why
+        + '\n\nIf this mentions 401 the sign-in has expired — reconnect under ☁️ Sync settings.');
+    }
   }
   btn.textContent = '↻';
   btn.disabled = false;
@@ -4934,10 +5044,10 @@ async function handleSave() {
   const btn = document.getElementById('save-btn');
   const notif = document.getElementById('notif');
 
-  if (!gistConfigured()) {
-    // No gist set up — prompt user
+  if (!syncConfigured()) {
+    // No sync set up — prompt user
     const setup = confirm('Sync is not set up. Set it up now so this budget reaches your other devices?\n\nClick Cancel to skip (data saved on this device only).');
-    if (setup) { showGistSetup(); return; }
+    if (setup) { showSyncSetup(); return; }
     // local-only feedback
     clearDirty();
     btn.classList.add('saved');
@@ -4949,13 +5059,13 @@ async function handleSave() {
     return;
   }
 
-  // Push to Gist
+  // Push to the cloud
   btn.disabled = true;
   btn.innerHTML = `⏳ Syncing…`;
   setSyncStatus('syncing');
   setTopSaveBusy(true);
   try {
-    await pushToGist();
+    await pushToCloud();
     setTopSaveBusy(false);
     clearDirty();
     btn.classList.add('saved');
@@ -4975,17 +5085,21 @@ async function handleSave() {
     setSyncStatus('error', 'Sync failed: ' + e.message);
     btn.disabled = false;
     btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-3-3z"/><path d="M11 1v4H5V1M5 9h6"/></svg> Save`;
-    alert(providerName() + ' sync failed: ' + e.message + '\n\nData was saved on this device. '
-      + (syncProvider() === 'dropbox'
-          ? 'Check the connection under ☁️ Sync settings.'
-          : 'Check your token and Gist ID under ☁️ Sync settings.'));
+    if (odNeedsSignIn(e)) {
+      setSyncStatus('error', 'OneDrive sign-in needed');
+      if (confirm('Your OneDrive sign-in has expired — Microsoft ends it after 24 hours.\n\nYour budget is safe on this device. Sign in again now to sync it?')) {
+        odBeginAuth();
+      }
+      return;
+    }
+    alert(providerName() + ' sync failed: ' + e.message + '\n\nData was saved on this device. Check the connection under ☁️ Sync settings.');
   }
 }
 
 // ─── LOCAL AUTOSAVE + UNSAVED-CHANGES TRACKING ───────────────────
 // Every mutation writes the full payload to localStorage on a short debounce,
 // so an app reload, a Safari tab eviction or a crash can never lose work.
-// dataDirty tracks "local is ahead of the Gist" and survives reloads, so the
+// dataDirty tracks "local is ahead of the cloud" and survives reloads, so the
 // startup sync and pull-to-refresh can refuse to overwrite unpushed edits.
 const UNSAVED_KEY = APP_NS + ':unsaved';
 const CLEAN_KEY   = APP_NS + ':cleansnap';
@@ -5009,7 +5123,7 @@ function saveState() {
   } catch (e) { console.warn('saveState error', e); }
 }
 
-// Flag unsaved-vs-Gist changes and schedule a local write.
+// Flag unsaved-vs-cloud changes and schedule a local write.
 // Called from pushUndo(), which runs at the start of essentially every
 // mutating action; the debounce lets the mutation finish before we snapshot.
 function markDirty() {
@@ -12061,19 +12175,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // If Dropbox has just redirected back with an authorization code, finish the
   // exchange before the startup sync decides whether we are configured.
   if (location.search.indexOf('code=') !== -1) {
-    dbxHandleRedirect().then(ok => {
-      if (!ok) { setSyncStatus('error', lastGistError || 'Dropbox sign-in failed'); return; }
+    handleOAuthRedirect().then(ok => {
+      if (!ok) { setSyncStatus('error', lastSyncError || 'Sign-in failed'); return; }
       setSyncStatus('syncing', 'Connecting\u2026');
-      loadFromGist().then(good => {
+      loadFromCloud().then(good => {
         if (good) {
           renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
           renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage();
           updateSummary(); renderCalendar();
           applyBusinessVisibility(); renderBusiness();
-          setSyncStatus('ok', '\u2713 Dropbox connected');
+          setSyncStatus('ok', '\u2713 ' + providerName() + ' connected');
           setTimeout(() => setSyncStatus('idle'), 3000);
         } else {
-          setSyncStatus('error', lastGistError || 'Could not load data');
+          setSyncStatus('error', lastSyncError || 'Could not load data');
         }
       });
     });
@@ -12091,23 +12205,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }, 100);
 
-  // Restore saved credentials into setup fields
-  const t = localStorage.getItem(nsKey('gist_token')) || '';
-  const g = localStorage.getItem(nsKey('gist_id')) || '';
-  if (t) document.getElementById('gist-token-input').value = t;
-  if (g) document.getElementById('gist-id-input').value = g;
-
-  // Pull latest data from Gist on every load (stays logged in).
+  // Pull the latest copy on every load (the sign-in persists).
   // Skipped when localStorage holds edits that were never pushed, otherwise
-  // the pull would silently replace them with the older Gist copy.
+  // the pull would silently replace them with the older cloud copy.
   syncDirtyUI();
-  if (gistConfigured() && dataDirty) {
+  if (syncConfigured() && dataDirty) {
     setSyncStatus('error', 'Unsaved changes \u2014 tap to review');
     checkStartupConflict();
-  } else if (gistConfigured()) {
+  } else if (syncConfigured()) {
     setSyncStatus('syncing', 'Syncing\u2026');
     try {
-      const ok = await loadFromGist();
+      const ok = await loadFromCloud();
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
         renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
@@ -12115,7 +12223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setSyncStatus('ok', '\u2713 Synced');
         setTimeout(() => setSyncStatus('idle'), 2500);
       } else {
-        setSyncStatus('error', 'Sync failed: ' + (lastGistError || 'unknown'));
+        setSyncStatus('error', 'Sync failed: ' + (lastSyncError || 'unknown'));
         setTimeout(() => setSyncStatus('idle'), 6000);
       }
     } catch(err) {
@@ -12221,8 +12329,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    if (gistConfigured()) {
-      const ok = await loadFromGist();
+    if (syncConfigured()) {
+      const ok = await loadFromCloud();
       if (ok) {
         renderIncome(); renderExpenses(); renderDebts(); renderInvestments();
         renderCreditCardsPage(); renderBankAccounts(); renderMortgagePage(); updateSummary(); renderCalendar();
@@ -12232,7 +12340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => setSyncStatus('idle'), 2500);
       } else {
         label.textContent = 'Sync failed';
-        setSyncStatus('error', 'Sync failed: ' + (lastGistError || 'unknown'));
+        setSyncStatus('error', 'Sync failed: ' + (lastSyncError || 'unknown'));
         setTimeout(() => setSyncStatus('idle'), 6000);
       }
     } else {
@@ -13044,7 +13152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 
 <!-- GIST SYNC SETUP MODAL -->
-<div class="modal-overlay" id="gist-setup-modal" onclick="if(event.target===this)closeGistSetup()" style="z-index:1100">
+<div class="modal-overlay" id="sync-setup-modal" onclick="if(event.target===this)closeSyncSetup()" style="z-index:1100">
   <div class="modal" style="max-width:420px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <h2 id="sync-modal-title" style="font-family:var(--font-serif);font-size:1.4em;letter-spacing:-.02em;margin:0">Sync</h2>
@@ -13061,11 +13169,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         <span class="sync-choice-title">Dropbox</span>
         <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
       </button>
-      <button class="sync-choice" onclick="showSyncPane('gist')">
-        <span class="sync-choice-mark" style="color:var(--muted)">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l-5-6 5-6M15 6l5 6-5 6"/></svg>
+      <button class="sync-choice" id="od-choice" style="display:none" onclick="showSyncPane('onedrive')">
+        <span class="sync-choice-mark" style="color:#0364B8">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.7 9.3a5 5 0 0 1 9.2-1.6 4 4 0 0 1 3.6 3.1 3.4 3.4 0 0 1-.9 6.7H7.2a4.2 4.2 0 0 1-.6-8.3 5 5 0 0 1 1.1.1z"/></svg>
         </span>
-        <span class="sync-choice-title">GitHub Gist</span>
+        <span class="sync-choice-title">OneDrive</span>
         <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
       </button>
     </div>
@@ -13132,26 +13240,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       <button class="btn-secondary" id="dbx-signout" style="width:100%;margin-top:16px;display:none;font-size:0.95em;padding:13px;color:var(--expense-red);border-color:var(--expense-red)" onclick="dbxSignOut();refreshSyncSetupUI()">Disconnect Dropbox</button>
     </div>
 
-    <div id="gist-section" style="display:none">
-    <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
-    <div class="form-field" style="margin-bottom:14px">
-      <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Access Token</label>
-      <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
-    </div>
-    <div class="form-field" style="margin-bottom:14px">
-      <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Gist ID</label>
-      <input type="text" id="gist-id-input" placeholder="your gist id" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.9em;padding:9px 12px">
-    </div>
-    <div id="gist-diag-box" style="display:none;margin-bottom:14px;padding:10px 12px;background:var(--surface2);border-radius:8px;font-family:var(--font-mono);font-size:0.75em;color:var(--expense-red);word-break:break-all;line-height:1.5"></div>
-    <div style="display:flex;gap:10px;margin-bottom:10px">
-      <button class="btn-primary" onclick="saveGistConfig()" style="flex:1">Connect</button>
-      <button class="btn-secondary" onclick="closeGistSetup()">Cancel</button>
-    </div>
-    <button class="btn-secondary" onclick="testGistConnection()" style="width:100%;margin-bottom:16px;font-size:0.85em">&#x1F50D; Test connection</button>
-    <div style="padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:0.75em;color:var(--muted);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em">Danger zone</div>
-      <button class="btn-secondary" onclick="if(confirm('Remove Gist credentials from this device?')){localStorage.removeItem(nsKey('gist_token'));localStorage.removeItem(nsKey('gist_id'));closeGistSetup();setSyncStatus('idle','\u2601\uFE0F Log in');}" style="font-size:0.8em;color:var(--expense-red);border-color:var(--expense-red);width:100%">Log out</button>
-    </div>
+    <div id="od-section" style="display:none">
+      <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
+      <div id="od-status" style="font-size:1.05em;color:var(--muted);line-height:1.5;margin-bottom:18px"></div>
+      <div id="od-choices">
+        <button class="sync-choice" onclick="odConnect()">
+          <span class="sync-choice-mark" style="color:#0364B8">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.7 9.3a5 5 0 0 1 9.2-1.6 4 4 0 0 1 3.6 3.1 3.4 3.4 0 0 1-.9 6.7H7.2a4.2 4.2 0 0 1-.6-8.3 5 5 0 0 1 1.1.1z"/></svg>
+          </span>
+          <span class="sync-choice-title">Sign in to OneDrive</span>
+          <span class="sync-choice-go" aria-hidden="true">&rsaquo;</span>
+        </button>
+      </div>
+      <div id="od-daily-note" style="margin-top:14px;padding:12px 14px;background:rgba(255,159,46,.10);border:1px solid rgba(255,159,46,.35);border-radius:10px;font-size:0.82em;color:var(--text);line-height:1.5">
+        Microsoft expires a browser app's sign-in after 24 hours, so OneDrive will ask you to sign in again about once a day. Your budget is never lost when it does &mdash; it stays on this device and syncs again once you are back in. Dropbox stays signed in.
+      </div>
+      <div class="form-field" id="od-id-field" style="margin-top:14px;margin-bottom:10px">
+        <label style="font-size:0.8em;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Application (client) ID</label>
+        <input type="text" id="od-id-input" placeholder="from the Microsoft Entra portal" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:0.85em;padding:11px 12px">
+      </div>
+      <div id="od-redirect-panel" style="margin-top:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <div style="font-family:var(--font-mono);font-size:0.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">Redirect URI &mdash; register this exact value, platform &ldquo;Single-page application&rdquo;</div>
+        <div id="od-redirect-uri" style="font-family:var(--font-mono);font-size:0.78em;color:var(--text);word-break:break-all;line-height:1.4"></div>
+        <button class="btn-secondary" style="width:100%;margin-top:8px;padding:7px;font-size:0.8em" onclick="copyOdRedirect(event)">Copy</button>
+      </div>
+      <button class="btn-secondary" id="od-signout" style="width:100%;margin-top:16px;display:none;font-size:0.95em;padding:13px;color:var(--expense-red);border-color:var(--expense-red)" onclick="odSignOut();refreshOneDriveUI()">Disconnect OneDrive</button>
     </div>
   </div>
 </div>
@@ -13176,15 +13289,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   </div>
 </div>
 
-<div class="modal-overlay" id="gist-help-modal" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:1200">
+<div class="modal-overlay" id="sync-help-modal" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:1200">
   <div class="modal" style="max-width:400px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <h2 style="font-family:var(--font-serif);font-size:1.2em;letter-spacing:-.02em;margin:0">Help</h2>
-      <button onclick="document.getElementById('gist-help-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.4em;line-height:1;padding:0">×</button>
+      <button onclick="document.getElementById('sync-help-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.4em;line-height:1;padding:0">×</button>
     </div>
     <div id="sync-help-body" style="font-size:0.875em;color:var(--muted);line-height:1.7"></div>
     <div style="margin-top:20px">
-      <button class="btn-primary" onclick="document.getElementById('gist-help-modal').classList.remove('open')" style="width:100%">Got it</button>
+      <button class="btn-primary" onclick="document.getElementById('sync-help-modal').classList.remove('open')" style="width:100%">Got it</button>
     </div>
   </div>
 </div>
