@@ -4964,6 +4964,10 @@ function showSyncPane(which) {
   // brings it back with no other change.
   const odChoice = document.getElementById('od-choice');
   if (odChoice) odChoice.style.display = odClientId() ? '' : 'none';
+  // With Dropbox the only provider, "All options" would lead to a list of one,
+  // so the way back to it is hidden too.
+  const dbxBack = document.getElementById('dbx-back');
+  if (dbxBack) dbxBack.style.display = odClientId() ? '' : 'none';
   Object.keys(map).forEach(k => {
     const el = document.getElementById(map[k]);
     if (el) el.style.display = (which === k) ? '' : 'none';
@@ -4974,9 +4978,15 @@ function showSyncPane(which) {
 
 function showSyncSetup() {
   document.getElementById('sync-setup-modal').classList.add('open');
-  // Land on whichever provider is already in use, otherwise the chooser.
+  // Land on whichever provider is already in use. With nothing connected yet
+  // there is only something to choose between if OneDrive has been set up in
+  // this build; otherwise go straight to Dropbox rather than showing a chooser
+  // with a single entry.
   const p = syncProvider();
-  showSyncPane(p === 'dropbox' ? 'dropbox' : (p === 'onedrive' ? 'onedrive' : ''));
+  const landing = p === 'dropbox'  ? 'dropbox'
+                : p === 'onedrive' ? 'onedrive'
+                : (odClientId() ? '' : 'dropbox');
+  showSyncPane(landing);
   refreshSyncSetupUI();
 }
 function closeSyncSetup() {
@@ -13192,7 +13202,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
 
     <div id="dbx-section" style="display:none">
-      <button class="sync-back" onclick="showSyncPane('')">&lsaquo; All options</button>
+      <button class="sync-back" id="dbx-back" onclick="showSyncPane('')">&lsaquo; All options</button>
       <div id="dbx-status" style="font-size:1.05em;color:var(--muted);line-height:1.5;margin-bottom:18px"></div>
       <div id="dbx-choices">
         <button class="sync-choice" onclick="dbxConnect()">
